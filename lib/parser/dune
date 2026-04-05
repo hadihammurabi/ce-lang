@@ -1,0 +1,6 @@
+(library
+ (name ce_parser)
+ (libraries menhirLib ppx_deriving.show ppx_deriving.eq)
+ (preprocess (pps ppx_deriving.show ppx_deriving.eq)))
+
+(menhir (modules parser))

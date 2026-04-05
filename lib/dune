@@ -1,0 +1,3 @@
+(library
+  (name ce)
+  (libraries ce_lexer))
