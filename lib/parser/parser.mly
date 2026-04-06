@@ -8,8 +8,8 @@
 %token          PLUS MINUS STAR SLASH
 %token          LPAREN RPAREN LBRACE RBRACE COMMA EQUALS
 %token          NEWLINE EOF
-%token          FN VAR
-%token          TYPE_INT TYPE_FLOAT
+%token          FN VAR RETURN
+%token          TYPE_INT TYPE_FLOAT TYPE_VOID
 
 %left  PLUS MINUS
 %left  STAR SLASH
@@ -27,6 +27,7 @@ stmt:
   | expr terminator           { Expr $1 }
   | def_fn terminator         { $1 }
   | def_var terminator        { $1 }
+  | RETURN e = expr terminator { Return e }
 
 def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
@@ -34,9 +35,10 @@ def_var:
 types:
   | TYPE_INT   { TypeInt }
   | TYPE_FLOAT { TypeFloat }
+  | TYPE_VOID { TypeVoid }
 
 def_fn:
-    | FN name = IDENT LPAREN RPAREN LBRACE newline body = def_fn_body newline RBRACE { DefFN (name, body) }
+    | FN name = IDENT LPAREN RPAREN ty = types LBRACE newline body = def_fn_body newline RBRACE { DefFN (name, ty, body) }
 
 def_fn_body:
   | { [] }

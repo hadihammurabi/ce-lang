@@ -1,4 +1,4 @@
-type types = TypeInt | TypeFloat
+type types = TypeInt | TypeFloat | TypeVoid
 
 type expr =
   | Int    of int
@@ -27,10 +27,12 @@ let rec to_string = function
 
 type stmt =
   | Expr of expr
-  | DefFN of string * stmt list
+  | DefFN of string * types * stmt list
   | DefVar of string * types * expr
+  | Return of expr
 
 let exec = function
   | Expr _ -> ()
-  | DefFN (name, _body) -> ()
+  | DefFN (name, ty, _body) -> ()
   | DefVar (name, ty, value) -> ()
+  | Return _ -> ()

@@ -60,6 +60,9 @@ let rec compile_stmt_to_c oc = function
       compile_expr_to_c oc expr;
       Printf.fprintf oc "    Value %s = pop();\n" name
   | Ce_parser.Ast.DefFN _ ->  ()
+  | Ce_parser.Ast.Return e ->
+    compile_expr_to_c oc e;
+    Printf.fprintf oc "    return;\n"
 
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in
@@ -134,7 +137,7 @@ let write_c_wrapper filename code functions globals =
   output_string oc "    sp -= argc;\n";
   output_string oc "}\n\n";
 
-  List.iter (fun (fname, _body) ->
+  List.iter (fun (fname, ty, _body) ->
     let fn_name = if fname = "main" then "fn_main" else fname in
     Printf.fprintf oc "void %s();\n" fn_name
   ) functions;
@@ -145,10 +148,9 @@ let write_c_wrapper filename code functions globals =
   ) globals;
   output_string oc "\n";
   
-  List.iter (fun (fname, body) ->
+  List.iter (fun (fname, ty, body) ->
     let fn_name = if fname = "main" then "fn_main" else fname in
     Printf.fprintf oc "void %s() {\n" fn_name;
-    Printf.fprintf oc "    sp = 0;\n\n";
     List.iter (fun expr ->
       compile_stmt_to_c oc expr
     ) body;

@@ -3,7 +3,7 @@ open Opcode
 
 type ctx = {
   mutable code : opcode list;
-  mutable functions : (string * Ce_parser.Ast.stmt list) list;
+  mutable functions : (string * Ce_parser.Ast.types * Ce_parser.Ast.stmt list) list;
   mutable globals : (string * Ce_parser.Ast.types * Ce_parser.Ast.expr) list;
 }
 
@@ -13,8 +13,8 @@ let emit ctx op = ctx.code <- op :: ctx.code
 
 let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 
-let register_function ctx name body =
-  ctx.functions <- (name, body) :: ctx.functions
+let register_function ctx name ty body =
+  ctx.functions <- (name, ty, body) :: ctx.functions
 
 let rec compile_expr ctx = function
   | Int n    -> emit ctx (Push_int n)
@@ -60,13 +60,17 @@ let compile_stmt ctx = function
     compile_expr ctx e;
     emit ctx Pop
 
-  | DefFN (name, body) ->
+  | DefFN (name, ty, body) ->
     emit ctx (DefFN name);
-    register_function ctx name body
+    register_function ctx name ty body
 
   | DefVar (name, ty, value) ->
-      emit ctx (DefVar name);
-      ctx.globals <- (name, ty, value) :: ctx.globals
+    emit ctx (DefVar name);
+    ctx.globals <- (name, ty, value) :: ctx.globals
+
+  | Return e ->
+    compile_expr ctx e;
+    emit ctx Return
 
 let compile (stmts : stmt list) : program =
   let ctx = make_ctx () in

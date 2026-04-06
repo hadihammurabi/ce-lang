@@ -18,8 +18,10 @@ rule tokenize = parse
 
   | "fn"               { FN }
   | "var"              { VAR }          
+  | "return"           { RETURN }
   | "int"              { TYPE_INT }     
   | "float"            { TYPE_FLOAT }   
+  | "void"             { TYPE_VOID }   
   | alpha alnum*       { IDENT (Lexing.lexeme lexbuf) }
 
   | '"'                { let buf = Buffer.create 32 in string_lit buf lexbuf }
