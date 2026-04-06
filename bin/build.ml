@@ -24,13 +24,12 @@ let remove_extension filename =
   | Some dot_index -> String.sub filename 0 dot_index
   | None -> filename
 
-let compile filename code = 
+let compile code = 
   try
-    let prog = code |> parse |> Compiler.compile in
+    code |> parse |> Compiler.compile
     (* Debug.dump prog.code prog.functions *)
     (* Vm.main prog.code prog.functions *)
 
-    Compiler.export filename prog
   with
   | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
     Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;
@@ -39,7 +38,12 @@ let compile filename code =
     exit 1
 
 let execute file =
-  compile (read file)
+  let binary_file = remove_extension file in
+  let _ = file
+  |> read
+  |> compile
+  |> Compiler.export binary_file in
+  Printf.printf "Compiled and linked: %s\n" binary_file
 
 let command =
   let doc = "Compile inserted ce-lang code file to binary executable" in

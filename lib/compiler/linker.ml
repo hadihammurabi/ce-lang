@@ -4,7 +4,7 @@ let compile_and_link output_file c_file =
   match Sys.command compile_cmd with
   | 0 ->
     (match Sys.command link_cmd with
-    | 0 -> Printf.printf "Compiled and linked: %s\n" output_file
+    | 0 -> ()
     | code -> Printf.eprintf "Link failed with code %d\n" code; exit 1)
   | code -> Printf.eprintf "Compilation failed with code %d\n" code; exit 1
 
