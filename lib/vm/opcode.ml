@@ -10,6 +10,7 @@ type opcode =
   | Neg
 
   | Call of string * int
+  | DefFN of string
 
   | Pop   
   | Halt 
@@ -24,6 +25,7 @@ let to_string = function
   | Div           -> "DIV"
   | Neg           -> "NEG"
   | Call (f, n)   -> Printf.sprintf "CALL        %s/%d" f n
+  | DefFN name    -> Printf.sprintf "DEF_FN      %s"   name
   | Pop           -> "POP"
   | Halt          -> "HALT"
 

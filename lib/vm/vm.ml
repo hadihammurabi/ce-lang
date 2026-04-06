@@ -60,4 +60,5 @@ let execute prog =
       Stack.push (builtin name args) stack
     | Pop  -> ignore (pop ())
     | Halt -> ()
+    | _ -> ()
   done

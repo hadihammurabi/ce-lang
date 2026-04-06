@@ -4,13 +4,11 @@
 
 %token <int>    INT
 %token <float>  FLOAT
-%token <string> STRING
-%token <string> IDENT
+%token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH
-%token          LPAREN RPAREN
-%token          COMMA
-%token          NEWLINE
-%token          EOF
+%token          LPAREN RPAREN LBRACE RBRACE COMMA
+%token          NEWLINE EOF
+%token          FN
 
 %left  PLUS MINUS
 %left  STAR SLASH
@@ -26,6 +24,18 @@ prog:
 
 stmt:
   | expr terminator           { Expr $1 }
+  | def_fn terminator         { $1 }
+
+def_fn:
+    | FN name = IDENT LPAREN RPAREN LBRACE newline body = def_fn_body newline RBRACE { DefFN (name, body) }
+
+def_fn_body:
+  | { [] }
+  | expr terminator def_fn_body { $1 :: $3 }
+
+newline:
+  | { }
+  | NEWLINE newline { }
 
 terminator:
   | NEWLINE | EOF        {}

@@ -38,12 +38,8 @@ let rec eval = function
 (* Statement: top-level things that can be executed *)
 type stmt =
   | Expr of expr
+  | DefFN of string * expr list
 
 let exec = function
-  | Expr (Call ("println", args)) ->
-    let parts = List.map to_string args in
-    print_endline (String.concat " " parts)
-  | Expr (Call ("print", args)) ->
-    let parts = List.map to_string args in
-    Printf.printf "%s" (String.concat " " parts)
+  | DefFN (name, _body) -> ()
   | Expr _ -> ()
