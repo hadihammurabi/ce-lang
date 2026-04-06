@@ -9,9 +9,10 @@ type opcode =
   | Div
   | Neg
 
-  | Call of string * int
+  | DefVar of string
+  | Var of string
   | DefFN of string
-
+  | Call of string * int
   | Pop   
   | Halt 
 
@@ -24,14 +25,17 @@ let to_string = function
   | Mul           -> "MUL"
   | Div           -> "DIV"
   | Neg           -> "NEG"
-  | Call (f, n)   -> Printf.sprintf "CALL        %s/%d" f n
+  | DefVar name   -> Printf.sprintf "DEF_VAR     %s"   name
+  | Var name  -> Printf.sprintf "LOAD_VAR    %s"   name
   | DefFN name    -> Printf.sprintf "DEF_FN      %s"   name
+  | Call (f, n)   -> Printf.sprintf "CALL        %s/%d" f n
   | Pop           -> "POP"
   | Halt          -> "HALT"
 
 type program = {
   code: opcode array;
   functions : (string * Ce_parser.Ast.expr list) list;
+  globals : (string * Ce_parser.Ast.types * Ce_parser.Ast.expr) list;
 } 
 
 let dump (code: opcode array) =

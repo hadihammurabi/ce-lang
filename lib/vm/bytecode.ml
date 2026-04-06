@@ -44,12 +44,16 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else push_float(-v.value.f); }\n"
   | Ce_parser.Ast.Call (name, args) ->
     List.iter (compile_expr_to_c oc) args;
+    let argc = List.length args in
     (match name with
-    | "println" -> output_string oc "    builtin_println();\n"
-    | "print" -> output_string oc "    builtin_print();\n"
+    | "println" -> Printf.fprintf oc "    builtin_println(%d);\n" argc
+    | "print" -> Printf.fprintf oc "    builtin_print(%d);\n" argc
     | _ -> Printf.fprintf oc "    %s();\n" name)
+  | Ce_parser.Ast.Var (name) ->
+    Printf.fprintf oc "    stack[sp] = %s;\n" name;
+    Printf.fprintf oc "    sp++;\n"
 
-let write_c_wrapper filename prog functions =
+let write_c_wrapper filename code functions globals =
   let oc = open_out filename in
   output_string oc "#include <stdio.h>\n";
   output_string oc "#include <stdint.h>\n";
@@ -92,31 +96,45 @@ let write_c_wrapper filename prog functions =
   output_string oc "Value pop() {\n";
   output_string oc "    return stack[--sp];\n";
   output_string oc "}\n\n";
-  
-  output_string oc "void builtin_println() {\n";
-  output_string oc "    Value v = pop();\n";
-  output_string oc "    switch(v.type) {\n";
-  output_string oc "        case 0: printf(\"%ld\\n\", v.value.i); break;\n";
-  output_string oc "        case 1: printf(\"%g\\n\", v.value.f); break;\n";
-  output_string oc "        case 2: printf(\"%s\\n\", v.value.s); break;\n";
-  output_string oc "        case 3: printf(\"()\\n\"); break;\n";
+
+  output_string oc "void builtin_println(int argc) {\n";
+  output_string oc "    for(int i = argc; i > 0; i--) {\n";
+  output_string oc "        Value v = stack[sp - i];\n";
+  output_string oc "        switch(v.type) {\n";
+  output_string oc "            case 0: printf(\"%ld\", v.value.i); break;\n";
+  output_string oc "            case 1: printf(\"%g\", v.value.f); break;\n";
+  output_string oc "            case 2: printf(\"%s\", v.value.s); break;\n";
+  output_string oc "            case 3: printf(\"()\"); break;\n";
+  output_string oc "        }\n";
+  output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
+  output_string oc "    printf(\"\\n\");\n";
+  output_string oc "    sp -= argc;\n";
   output_string oc "}\n\n";
   
-  output_string oc "void builtin_print() {\n";
-  output_string oc "    Value v = pop();\n";
-  output_string oc "    switch(v.type) {\n";
-  output_string oc "        case 0: printf(\"%ld\", v.value.i); break;\n";
-  output_string oc "        case 1: printf(\"%g\", v.value.f); break;\n";
-  output_string oc "        case 2: printf(\"%s\", v.value.s); break;\n";
-  output_string oc "        case 3: printf(\"()\"); break;\n";
+  output_string oc "void builtin_print(int argc) {\n";
+  output_string oc "    for(int i = argc; i > 0; i--) {\n";
+  output_string oc "        Value v = stack[sp - i];\n";
+  output_string oc "        switch(v.type) {\n";
+  output_string oc "            case 0: printf(\"%ld\", v.value.i); break;\n";
+  output_string oc "            case 1: printf(\"%g\", v.value.f); break;\n";
+  output_string oc "            case 2: printf(\"%s\", v.value.s); break;\n";
+  output_string oc "            case 3: printf(\"()\"); break;\n";
+  output_string oc "        }\n";
+  output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
+  output_string oc "    sp -= argc;\n";
   output_string oc "}\n\n";
 
   List.iter (fun (fname, _body) ->
     let fn_name = if fname = "main" then "fn_main" else fname in
     Printf.fprintf oc "void %s();\n" fn_name
   ) functions;
+  output_string oc "\n";
+
+  List.iter (fun (name, _ty, _expr) ->
+    Printf.fprintf oc "Value %s;\n" name
+  ) globals;
   output_string oc "\n";
   
   List.iter (fun (fname, body) ->
@@ -130,6 +148,13 @@ let write_c_wrapper filename prog functions =
   ) functions;
   
   output_string oc "int main() {\n";
+
+  List.iter (fun (name, _ty, expr) ->
+    Printf.fprintf oc "    sp = 0;\n";
+    compile_expr_to_c oc expr;
+    Printf.fprintf oc "    %s = pop();\n\n" name
+  ) globals;
+
   output_string oc "    fn_main();\n";
   output_string oc "    return 0;\n";
   output_string oc "}\n";

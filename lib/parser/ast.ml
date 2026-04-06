@@ -1,3 +1,5 @@
+type types = TypeInt | TypeFloat
+
 type expr =
   | Int    of int
   | Float  of float
@@ -8,6 +10,7 @@ type expr =
   | Div    of expr * expr
   | Neg    of expr
   | Call   of string * expr list 
+  | Var    of string
 
 let rec to_string = function
   | Int n        -> string_of_int n
@@ -20,11 +23,14 @@ let rec to_string = function
   | Neg e        -> Printf.sprintf "(-%s)" (to_string e)
   | Call (f, args) ->
     Printf.sprintf "%s(%s)" f (String.concat ", " (List.map to_string args))
+  | Var name     -> name
 
 type stmt =
   | Expr of expr
   | DefFN of string * expr list
+  | DefVar of string * types * expr
 
 let exec = function
-  | DefFN (name, _body) -> ()
   | Expr _ -> ()
+  | DefFN (name, _body) -> ()
+  | DefVar (name, ty, value) -> ()

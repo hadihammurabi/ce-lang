@@ -11,12 +11,15 @@ let whitespace = [' ' '\t' '\r']
 
 rule tokenize = parse
   | whitespace+        { tokenize lexbuf }
-  | '\n'               { NEWLINE }
+  | '\n'               { Lexing.new_line lexbuf; NEWLINE }  
 
   | digit+ '.' digit+  { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }
   | digit+             { INT (int_of_string (Lexing.lexeme lexbuf)) }
 
   | "fn"               { FN }
+  | "var"              { VAR }          
+  | "int"              { TYPE_INT }     
+  | "float"            { TYPE_FLOAT }   
   | alpha alnum*       { IDENT (Lexing.lexeme lexbuf) }
 
   | '"'                { let buf = Buffer.create 32 in string_lit buf lexbuf }
@@ -30,6 +33,7 @@ rule tokenize = parse
   | '{'                { LBRACE }
   | '}'                { RBRACE }
   | ','                { COMMA }
+  | '='                { EQUALS }       
 
   | eof                { EOF }
   | _ as c             { raise (Lexer_error (Printf.sprintf "Unexpected character: '%c'" c, lexbuf.lex_curr_p)) }
