@@ -18,13 +18,18 @@ let format_position pos =
   let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol + 1 in
   Printf.sprintf "line %d, column %d" line col
 
-let run code = 
+let remove_extension filename =
+  match String.rindex_opt filename '.' with
+  | Some dot_index -> String.sub filename 0 dot_index
+  | None -> filename
+
+let run filename code = 
   try
     let prog = code |> parse |> Compiler.compile in
     (* Debug.dump prog.code prog.functions *)
     (* Vm.main prog.code prog.functions *)
 
-    Compiler.export "main" prog
+    Compiler.export filename prog
   with
   | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
     Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;
@@ -38,4 +43,6 @@ let () =
     exit 1
   end;
 
-  run (read Sys.argv.(1))
+  let file = Sys.argv.(1) in
+  read file
+  |> run (remove_extension file)

@@ -47,7 +47,7 @@ let rec compile_expr_to_c oc = function
     (match name with
     | "println" -> output_string oc "    builtin_println();\n"
     | "print" -> output_string oc "    builtin_print();\n"
-    | _ -> Printf.fprintf oc "    /* unknown function: %s */\n" name)
+    | _ -> Printf.fprintf oc "    %s();\n" name)
 
 let write_c_wrapper filename prog functions =
   let oc = open_out filename in
@@ -112,9 +112,16 @@ let write_c_wrapper filename prog functions =
   output_string oc "        case 3: printf(\"()\"); break;\n";
   output_string oc "    }\n";
   output_string oc "}\n\n";
+
+  List.iter (fun (fname, _body) ->
+    let fn_name = if fname = "main" then "fn_main" else fname in
+    Printf.fprintf oc "void %s();\n" fn_name
+  ) functions;
+  output_string oc "\n";
   
   List.iter (fun (fname, body) ->
-    Printf.fprintf oc "void fn_%s() {\n" fname;
+    let fn_name = if fname = "main" then "fn_main" else fname in
+    Printf.fprintf oc "void %s() {\n" fn_name;
     Printf.fprintf oc "    sp = 0;\n\n";
     List.iter (fun expr ->
       compile_expr_to_c oc expr
