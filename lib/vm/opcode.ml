@@ -34,7 +34,7 @@ type program = {
   functions : (string * Ce_parser.Ast.expr list) list;
 } 
 
-let dump (prog : program) =
+let dump (code: opcode array) =
   Array.iteri (fun i op ->
     Printf.printf "%04d  %s\n" i (to_string op)
-  ) prog.code
+  ) code

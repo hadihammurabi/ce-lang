@@ -21,7 +21,8 @@ let format_position pos =
 let run code = 
   try
     let prog = code |> parse |> Compiler.compile in
-    Vm.main prog.code prog.functions
+    Debug.dump prog.code prog.functions
+    (* Vm.main prog.code prog.functions *)
   with
   | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
     Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;

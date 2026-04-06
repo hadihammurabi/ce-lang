@@ -66,3 +66,10 @@ let compile (stmts : stmt list) : program =
   List.iter (compile_stmt ctx) stmts;
   emit ctx Halt;
   { code = finish ctx; functions = ctx.functions }
+
+let compile_expr_to_program (expr : Ce_parser.Ast.expr) : Opcode.program =
+  let ctx = make_ctx () in
+  compile_expr ctx expr;
+  emit ctx Pop;
+  emit ctx Halt;
+  { code = finish ctx; functions = ctx.functions }
