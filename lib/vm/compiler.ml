@@ -73,3 +73,10 @@ let compile_expr_to_program (expr : Ce_parser.Ast.expr) : Opcode.program =
   emit ctx Pop;
   emit ctx Halt;
   { code = finish ctx; functions = ctx.functions }
+
+let export output_file (prog: program)=
+  let base_name = try String.sub output_file 0 (String.rindex output_file '.') with Not_found -> output_file in
+  let c_file = base_name ^ ".c" in
+  Bytecode.write_c_wrapper c_file prog.code prog.functions;
+  Linker.compile_and_link output_file c_file;
+  Linker.cleanup_temp c_file

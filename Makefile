@@ -1,0 +1,43 @@
+.PHONY: all build install clean test doc fmt lint release
+
+all: build
+
+build:
+	dune build @all
+
+install:
+	dune install
+
+clean:
+	dune clean
+
+test:
+	dune runtest
+
+doc:
+	dune build @doc
+
+fmt:
+	dune fmt
+
+lint:
+	ocamlfind ocamlc -c -thread -package sedlex,menhir,ppx_deriving -i lib/**/*.ml
+
+release: clean
+	dune build --release
+	dune install --prefix=./dist
+
+dev-setup:
+	opam install -y dune menhir sedlex ppx_deriving cmdliner fmt
+
+help:
+	@echo "CE-Lang Build Commands:"
+	@echo "  make build       - Build the project"
+	@echo "  make install     - Install ce compiler"
+	@echo "  make clean       - Clean build artifacts"
+	@echo "  make test        - Run tests"
+	@echo "  make doc         - Generate documentation"
+	@echo "  make fmt         - Format code"
+	@echo "  make lint        - Lint code"
+	@echo "  make release     - Build optimized release"
+	@echo "  make dev-setup   - Setup development environment"
