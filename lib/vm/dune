@@ -1,0 +1,3 @@
+(library
+  (name ce_vm)
+  (libraries ce_parser sedlex))

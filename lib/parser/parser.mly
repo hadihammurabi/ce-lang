@@ -20,22 +20,24 @@
 %%
 
 prog:
-  | EOF                        { [] }
-  | NEWLINE rest = prog        { rest }
-  | s = stmt rest = prog       { s :: rest }
+  | EOF                 { [] }
+  | NEWLINE prog        { $2 }
+  | stmt prog           { $1 :: $2}
 
 stmt:
-  | e = expr NEWLINE           { Expr e }
-  | e = expr EOF               { Expr e }
+  | expr terminator           { Expr $1 }
+
+terminator:
+  | NEWLINE | EOF        {}
 
 expr:
-  | n = INT                                                        { Int n }
-  | f = FLOAT                                                      { Float f }
-  | s = STRING                                                     { String s }
+  | n = INT                                                       { Int n }
+  | f = FLOAT                                                     { Float f }
+  | s = STRING                                                    { String s }
+  | l = expr PLUS  r = expr                                       { Add (l, r) }
+  | l = expr MINUS r = expr                                       { Sub (l, r) }
+  | l = expr STAR  r = expr                                       { Mul (l, r) }
+  | l = expr SLASH r = expr                                       { Div (l, r) }
+  | MINUS e = expr %prec UMINUS                                   { Neg e }
+  | LPAREN e = expr RPAREN                                        { e }
   | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
-  | l = expr PLUS  r = expr                                        { Add (l, r) }
-  | l = expr MINUS r = expr                                        { Sub (l, r) }
-  | l = expr STAR  r = expr                                        { Mul (l, r) }
-  | l = expr SLASH r = expr                                        { Div (l, r) }
-  | MINUS e = expr %prec UMINUS                                    { Neg e }
-  | LPAREN e = expr RPAREN                                         { e }
