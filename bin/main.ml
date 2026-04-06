@@ -1,4 +1,4 @@
-open Ce_vm
+open Ce_compiler
 
 let read file = In_channel.with_open_text file In_channel.input_all
 
