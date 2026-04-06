@@ -6,9 +6,10 @@
 %token <float>  FLOAT
 %token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH
-%token          LPAREN RPAREN LBRACE RBRACE COMMA
+%token          LPAREN RPAREN LBRACE RBRACE COMMA EQUALS
 %token          NEWLINE EOF
-%token          FN
+%token          FN VAR
+%token          TYPE_INT TYPE_FLOAT
 
 %left  PLUS MINUS
 %left  STAR SLASH
@@ -25,6 +26,14 @@ prog:
 stmt:
   | expr terminator           { Expr $1 }
   | def_fn terminator         { $1 }
+  | def_var terminator        { $1 }
+
+def_var:
+  | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
+
+types:
+  | TYPE_INT   { TypeInt }
+  | TYPE_FLOAT { TypeFloat }
 
 def_fn:
     | FN name = IDENT LPAREN RPAREN LBRACE newline body = def_fn_body newline RBRACE { DefFN (name, body) }
@@ -51,3 +60,4 @@ expr:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | LPAREN e = expr RPAREN                                        { e }
   | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
+  | id = IDENT                                                    { Var id }

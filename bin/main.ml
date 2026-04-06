@@ -9,7 +9,7 @@ let parse src =
   with Ce_parser.Parser.Error ->
     let pos = lexbuf.lex_curr_p in
     let line = pos.pos_lnum in
-    let col = pos.pos_cnum - pos.pos_bol + 1 in
+    let col = pos.pos_cnum - pos.pos_bol in
     let token = Lexing.lexeme lexbuf in
     raise (Failure (Printf.sprintf "Parse error at line %d, column %d, near token '%s'" line col token))
 

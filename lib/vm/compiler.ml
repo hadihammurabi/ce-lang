@@ -4,9 +4,10 @@ open Opcode
 type ctx = {
   mutable code : opcode list;
   mutable functions : (string * Ce_parser.Ast.expr list) list;
+  mutable globals : (string * Ce_parser.Ast.types * Ce_parser.Ast.expr) list;
 }
 
-let make_ctx () = { code = []; functions = [] }
+let make_ctx () = { code = []; functions = []; globals = [] }
 
 let emit ctx op = ctx.code <- op :: ctx.code
 
@@ -48,6 +49,8 @@ let rec compile_expr ctx = function
     List.iter (compile_expr ctx) args;
     emit ctx (Call (fn, List.length args))
 
+  | Var name -> emit ctx (Var name)
+
 let compile_stmt ctx = function
   | Expr (Call (fn, args) as e) ->
     compile_expr ctx (Call (fn, args));
@@ -61,22 +64,26 @@ let compile_stmt ctx = function
     emit ctx (DefFN name);
     register_function ctx name body
 
+  | DefVar (name, ty, value) ->
+      emit ctx (DefVar name);
+      ctx.globals <- (name, ty, value) :: ctx.globals
+
 let compile (stmts : stmt list) : program =
   let ctx = make_ctx () in
   List.iter (compile_stmt ctx) stmts;
   emit ctx Halt;
-  { code = finish ctx; functions = ctx.functions }
+  { code = finish ctx; functions = ctx.functions; globals = List.rev ctx.globals }
 
 let compile_expr_to_program (expr : Ce_parser.Ast.expr) : Opcode.program =
   let ctx = make_ctx () in
   compile_expr ctx expr;
   emit ctx Pop;
   emit ctx Halt;
-  { code = finish ctx; functions = ctx.functions }
+  { code = finish ctx; functions = ctx.functions; globals = List.rev ctx.globals }
 
 let export output_file (prog: program)=
   let base_name = try String.sub output_file 0 (String.rindex output_file '.') with Not_found -> output_file in
   let c_file = base_name ^ ".c" in
-  Bytecode.write_c_wrapper c_file prog.code prog.functions;
+  Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals;
   Linker.compile_and_link output_file c_file;
-  Linker.cleanup_temp c_file
+  (* Linker.cleanup_temp c_file *)
