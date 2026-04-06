@@ -33,7 +33,7 @@ opam install ce
 Create `main.ce`:
 
 ```ce
-fn main() {
+fn main() void {
   println("Hello, World!")
 }
 ```
@@ -41,14 +41,54 @@ fn main() {
 Run it:
 
 ```bash
-ce main.ce
-./main
+ce run main.ce
 ```
 
 ## Usage
 
 ```
-ce <file.ce>
+CE(1)                               Ce Manual                              CE(1)
+
+NAME
+     ce - Ce-lang - A Good Programming Language
+
+SYNOPSIS
+     ce [COMMAND] …
+
+COMMANDS
+     build [OPTION]… file
+         Compile inserted ce-lang code file to binary executable
+
+     debug [--bytecode] [OPTION]… file
+         Read ce-lang code file then show debug output
+
+     run [OPTION]… file
+         Compile inserted ce-lang code file then execute that
+
+COMMON OPTIONS
+     --help[=FMT] (default=auto)
+         Show this help in format FMT. The value FMT must be one of auto, pager,
+         groff  or  plain.  With auto, the format is pager or plain whenever the
+         TERM env var is dumb or undefined.
+
+     --version
+         Show version information.
+
+EXIT STATUS
+     ce exits with:
+
+     0   on success.
+
+     123
+         on indiscriminate errors reported on standard error.
+
+     124
+         on command line parsing errors.
+
+     125
+         on unexpected internal errors (bugs).
+
+Ce 0.1.0                                                                   CE(1)
 ```
 
 ## Examples
@@ -56,15 +96,17 @@ ce <file.ce>
 ### Variables and Expressions
 
 ```ce
-fn main() {
-  println(x + y)
+fn main() void {
+  var x int = 5
+  println(x)
 }
 ```
 
 ### Functions
 
 ```ce
-fn add() {
+fn add() int {
+  return  5 + 10
 }
 ```
 
