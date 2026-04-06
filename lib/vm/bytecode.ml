@@ -53,6 +53,14 @@ let rec compile_expr_to_c oc = function
     Printf.fprintf oc "    stack[sp] = %s;\n" name;
     Printf.fprintf oc "    sp++;\n"
 
+let rec compile_stmt_to_c oc = function
+  | Ce_parser.Ast.Expr e -> 
+      compile_expr_to_c oc e
+  | Ce_parser.Ast.DefVar (name, _ty, expr) ->
+      compile_expr_to_c oc expr;
+      Printf.fprintf oc "    Value %s = pop();\n" name
+  | Ce_parser.Ast.DefFN _ ->  ()
+
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in
   output_string oc "#include <stdio.h>\n";
@@ -142,11 +150,11 @@ let write_c_wrapper filename code functions globals =
     Printf.fprintf oc "void %s() {\n" fn_name;
     Printf.fprintf oc "    sp = 0;\n\n";
     List.iter (fun expr ->
-      compile_expr_to_c oc expr
+      compile_stmt_to_c oc expr
     ) body;
     output_string oc "}\n\n"
   ) functions;
-  
+ 
   output_string oc "int main() {\n";
 
   List.iter (fun (name, _ty, expr) ->

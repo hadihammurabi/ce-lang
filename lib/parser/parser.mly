@@ -40,7 +40,7 @@ def_fn:
 
 def_fn_body:
   | { [] }
-  | expr terminator def_fn_body { $1 :: $3 }
+  | stmt def_fn_body { $1 :: $2 }
 
 newline:
   | { }

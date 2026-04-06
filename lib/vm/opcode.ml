@@ -34,7 +34,7 @@ let to_string = function
 
 type program = {
   code: opcode array;
-  functions : (string * Ce_parser.Ast.expr list) list;
+  functions : (string * Ce_parser.Ast.stmt list) list;
   globals : (string * Ce_parser.Ast.types * Ce_parser.Ast.expr) list;
 } 
 

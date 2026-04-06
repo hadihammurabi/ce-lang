@@ -27,7 +27,7 @@ let rec to_string = function
 
 type stmt =
   | Expr of expr
-  | DefFN of string * expr list
+  | DefFN of string * stmt list
   | DefVar of string * types * expr
 
 let exec = function
