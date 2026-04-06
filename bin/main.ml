@@ -15,7 +15,7 @@ let parse src =
 
 let format_position pos =
   let line = pos.Lexing.pos_lnum in
-  let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol + 1 in
+  let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol in
   Printf.sprintf "line %d, column %d" line col
 
 let remove_extension filename =

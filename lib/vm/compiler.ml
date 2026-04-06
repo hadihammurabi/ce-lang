@@ -3,7 +3,7 @@ open Opcode
 
 type ctx = {
   mutable code : opcode list;
-  mutable functions : (string * Ce_parser.Ast.expr list) list;
+  mutable functions : (string * Ce_parser.Ast.stmt list) list;
   mutable globals : (string * Ce_parser.Ast.types * Ce_parser.Ast.expr) list;
 }
 
@@ -86,4 +86,4 @@ let export output_file (prog: program)=
   let c_file = base_name ^ ".c" in
   Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals;
   Linker.compile_and_link output_file c_file;
-  (* Linker.cleanup_temp c_file *)
+  Linker.cleanup_temp c_file
