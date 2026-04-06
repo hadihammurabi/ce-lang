@@ -10,7 +10,7 @@ let make_ctx () = { code = []; functions = [] }
 
 let emit ctx op = ctx.code <- op :: ctx.code
 
-let finish ctx : program = Array.of_list (List.rev ctx.code)
+let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 
 let register_function ctx name body =
   ctx.functions <- (name, body) :: ctx.functions
@@ -61,9 +61,8 @@ let compile_stmt ctx = function
     emit ctx (DefFN name);
     register_function ctx name body
 
-
 let compile (stmts : stmt list) : program =
   let ctx = make_ctx () in
   List.iter (compile_stmt ctx) stmts;
   emit ctx Halt;
-  finish ctx
+  { code = finish ctx; functions = ctx.functions }

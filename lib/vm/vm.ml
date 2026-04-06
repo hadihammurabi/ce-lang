@@ -62,3 +62,54 @@ let execute prog =
     | Halt -> ()
     | _ -> ()
   done
+
+let rec eval_expr expr = match expr with
+  | Ce_parser.Ast.Int n -> VInt n
+  | Ce_parser.Ast.Float f -> VFloat f
+  | Ce_parser.Ast.String s -> VString s
+  | Ce_parser.Ast.Add (l, r) ->
+    (match eval_expr l, eval_expr r with
+    | VInt a, VInt b -> VInt (a + b)
+    | VFloat a, VFloat b -> VFloat (a +. b)
+    | VInt a, VFloat b -> VFloat (float_of_int a +. b)
+    | VFloat a, VInt b -> VFloat (a +. float_of_int b)
+    | VString a, v -> VString (a ^ to_str v)
+    | v, VString b -> VString (to_str v ^ b)
+    | _ -> err "type error in addition")
+  | Ce_parser.Ast.Sub (l, r) ->
+    (match eval_expr l, eval_expr r with
+    | VInt a, VInt b -> VInt (a - b)
+    | VFloat a, VFloat b -> VFloat (a -. b)
+    | VInt a, VFloat b -> VFloat (float_of_int a -. b)
+    | VFloat a, VInt b -> VFloat (a -. float_of_int b)
+    | _ -> err "type error in subtraction")
+  | Ce_parser.Ast.Mul (l, r) ->
+    (match eval_expr l, eval_expr r with
+    | VInt a, VInt b -> VInt (a * b)
+    | VFloat a, VFloat b -> VFloat (a *. b)
+    | VInt a, VFloat b -> VFloat (float_of_int a *. b)
+    | VFloat a, VInt b -> VFloat (a *. float_of_int b)
+    | _ -> err "type error in multiplication")
+  | Ce_parser.Ast.Div (l, r) ->
+    (match eval_expr l, eval_expr r with
+    | VInt a, VInt b when b <> 0 -> VInt (a / b)
+    | VFloat a, VFloat b when b <> 0.0 -> VFloat (a /. b)
+    | VInt a, VFloat b when b <> 0.0 -> VFloat (float_of_int a /. b)
+    | VFloat a, VInt b when b <> 0 -> VFloat (a /. float_of_int b)
+    | _ -> err "division by zero or type error")
+  | Ce_parser.Ast.Neg e ->
+    (match eval_expr e with
+    | VInt n -> VInt (-n)
+    | VFloat f -> VFloat (-.f)
+    | _ -> err "negation requires numeric operand")
+  | Ce_parser.Ast.Call (name, args) ->
+    let arg_values = List.map eval_expr args in
+    builtin name arg_values
+
+let main prog functions =
+    match List.assoc_opt "main" functions with
+  | Some body ->
+    List.iter (fun expr ->
+      let _ = eval_expr expr in ()
+    ) body
+  | None -> ()

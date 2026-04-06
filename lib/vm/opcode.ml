@@ -29,9 +29,12 @@ let to_string = function
   | Pop           -> "POP"
   | Halt          -> "HALT"
 
-type program = opcode array
+type program = {
+  code: opcode array;
+  functions : (string * Ce_parser.Ast.expr list) list;
+} 
 
 let dump (prog : program) =
   Array.iteri (fun i op ->
     Printf.printf "%04d  %s\n" i (to_string op)
-  ) prog
+  ) prog.code
