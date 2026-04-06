@@ -1,48 +1,15 @@
-open Ce_compiler
+open Cmdliner
 
-let read file = In_channel.with_open_text file In_channel.input_all
+let main_do args = Printf.printf "\n"
 
-let parse src =
-  let lexbuf = Lexing.from_string src in
-  try
-    Ce_parser.Parser.prog Ce_lexer.Lexer.tokenize lexbuf
-  with Ce_parser.Parser.Error ->
-    let pos = lexbuf.lex_curr_p in
-    let line = pos.pos_lnum in
-    let col = pos.pos_cnum - pos.pos_bol in
-    let token = Lexing.lexeme lexbuf in
-    raise (Failure (Printf.sprintf "Parse error at line %d, column %d, near token '%s'" line col token))
+let main = 
+  let info = Cmd.info "main" in
+  Cmd.v info Term.(const main_do $ const())
 
-let format_position pos =
-  let line = pos.Lexing.pos_lnum in
-  let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol in
-  Printf.sprintf "line %d, column %d" line col
+let cmd =
+  let doc = "Ce-lang - A Good Programming Language" in
+  let info = Cmd.info "ce" ~version:"0.1.0" ~doc in
+  let default = Term.(ret (const (`Help (`Pager, None)))) in
+  Cmd.group info ~default [Build.command; Run.command]
 
-let remove_extension filename =
-  match String.rindex_opt filename '.' with
-  | Some dot_index -> String.sub filename 0 dot_index
-  | None -> filename
-
-let run filename code = 
-  try
-    let prog = code |> parse |> Compiler.compile in
-    (* Debug.dump prog.code prog.functions *)
-    (* Vm.main prog.code prog.functions *)
-
-    Compiler.export filename prog
-  with
-  | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
-    Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;
-    exit 1
-  | Failure msg -> Printf.printf "Error: %s\n\n" msg;
-    exit 1
-
-let () =
-  if Array.length Sys.argv < 2 then begin
-    Printf.eprintf "Usage: ce <file.ce>\n";
-    exit 1
-  end;
-
-  let file = Sys.argv.(1) in
-  read file
-  |> run (remove_extension file)
+let () = exit (Cmd.eval cmd)

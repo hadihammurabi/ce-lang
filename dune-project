@@ -1,6 +1,7 @@
 (lang dune 3.22)
 
 (name ce)
+(version 0.1.0)
 
 (generate_opam_files true)
 
