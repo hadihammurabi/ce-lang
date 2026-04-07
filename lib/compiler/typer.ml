@@ -66,6 +66,55 @@ let rec check_expr env (e : expr) : expr =
         { kind = Mod (l_typed, r_typed); ty = TypeInt }
       else failwith "Type Error: Modulo operator (%) requires integer types"
 
+  | Eq (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = r_typed.ty then
+        { kind = Eq (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: Cannot check equality (==) on mismatched types"
+
+  | Lt (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = r_typed.ty && (l_typed.ty = TypeInt || l_typed.ty = TypeFloat) then
+        { kind = Lt (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '<' requires matching numeric types"
+
+  | Lte (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = r_typed.ty && (l_typed.ty = TypeInt || l_typed.ty = TypeFloat) then
+        { kind = Lte (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '<=' requires matching numeric types"
+
+  | Gt (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = r_typed.ty && (l_typed.ty = TypeInt || l_typed.ty = TypeFloat) then
+        { kind = Gt (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '>' requires matching numeric types"
+
+  | Gte (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = r_typed.ty && (l_typed.ty = TypeInt || l_typed.ty = TypeFloat) then
+        { kind = Gte (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '>=' requires matching numeric types"
+
+  | And (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = TypeBool && r_typed.ty = TypeBool then
+        { kind = And (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '&&' requires boolean expressions"
+
+  | Or (l, r) ->
+      let l_typed = check_expr env l in
+      let r_typed = check_expr env r in
+      if l_typed.ty = TypeBool && r_typed.ty = TypeBool then
+        { kind = Or (l_typed, r_typed); ty = TypeBool }
+      else failwith "Type Error: '||' requires boolean expressions"
+
   | Call (fn_name, args) ->
       let args_typed = List.map (check_expr env) args in
       let arg_types = List.map (fun (a : expr) -> a.ty) args_typed in
@@ -81,10 +130,43 @@ let rec check_expr env (e : expr) : expr =
               failwith ("Type Error: Argument mismatch in call to " ^ fn_name);
             { kind = Call (fn_name, args_typed); ty = ret_ty }
         | None -> failwith ("Type Error: Undefined function '" ^ fn_name ^ "'"))
+  | Array (n, ty, elems) ->
+      let elems_typed = List.map (check_expr env) elems in
+      
+      if List.length elems_typed <> n then
+        failwith (Printf.sprintf "Type Error: Array expected %d elements, but got %d" n (List.length elems_typed));
+      
+      List.iter (fun (e : expr) -> 
+        if e.ty <> ty then 
+          failwith (Printf.sprintf "Type Error: Array element type mismatch. Expected %s" (show_types ty))
+      ) elems_typed;
 
+      { kind = Array (n, ty, elems_typed); ty = TypeArray (n, ty) }
+
+  | If (cond, then_body, elifs, else_body) ->
+      let cond_typed = check_expr env cond in
+      if cond_typed.ty <> TypeBool then
+        failwith "Type Error: 'if' condition must be a boolean";
+
+      let check_block stmts = 
+        let scoped_env = { vars = Hashtbl.copy env.vars; funcs = Hashtbl.copy env.funcs } in
+        List.map (check_stmt scoped_env) stmts
+      in
+
+      let then_typed = check_block then_body in
+      
+      let elifs_typed = List.map (fun (c, b) -> 
+          let tc = check_expr env c in
+          if tc.ty <> TypeBool then failwith "Type Error: 'else if' condition must be boolean";
+          (tc, check_block b)
+      ) elifs in
+      
+      let else_typed = Option.map check_block else_body in
+      
+      { kind = If (cond_typed, then_typed, elifs_typed, else_typed); ty = TypeVoid }
   | _ -> e 
 
-let rec check_stmt env (s : stmt) : stmt =
+and check_stmt env (s : stmt) : stmt =
   match s with
   | Expr e -> 
       Expr (check_expr env e)
