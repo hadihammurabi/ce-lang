@@ -1,9 +1,9 @@
 open Ce_parser.Ast
-open Opcode
+open Ce_compiler.Opcode
 
 let dump (code : opcode array) (functions : (string * types * stmt list) list) =
   Printf.printf "=== Global Bytecode ===\n";
-  Opcode.dump code;
+  dump code;
 
   if List.length functions > 0 then begin
     Printf.printf "\n=== Registered Functions ===\n";

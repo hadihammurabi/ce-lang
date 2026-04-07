@@ -1,6 +1,7 @@
 open Ce_compiler
 open Ce_parser
 open Ce_lexer
+open Ce_linker
 open Cmdliner
 
 let read file = In_channel.with_open_text file In_channel.input_all
@@ -39,7 +40,7 @@ let compile code =
 
 let execute file =
   let binary_file = remove_extension file in
-  let _ = file |> read |> compile |> Compiler.export binary_file in
+  let _ = file |> read |> compile |> Linker.export binary_file in
   Printf.printf "Compiled and linked: %s\n" binary_file
 
 let command =

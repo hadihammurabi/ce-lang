@@ -1,4 +1,4 @@
-open Ce_compiler
+open Ce_linker
 open Cmdliner
 
 let execute file bytecode =

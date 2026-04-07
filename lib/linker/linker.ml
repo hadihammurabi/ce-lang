@@ -1,3 +1,5 @@
+open Ce_compiler.Opcode
+
 let compilers = [ "gcc"; "clang"; "cc" ]
 
 let find_compiler () =
@@ -33,3 +35,13 @@ let cleanup_temp base_name =
   let c_file = base_name ^ ".c" in
   if Sys.file_exists obj_file then Sys.remove obj_file;
   if Sys.file_exists c_file then Sys.remove c_file
+
+let export output_file (prog : program) =
+  let base_name =
+    try String.sub output_file 0 (String.rindex output_file '.')
+    with Not_found -> output_file
+  in
+  let c_file = base_name ^ ".c" in
+  Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals;
+  compile_and_link output_file c_file;
+  cleanup_temp base_name
