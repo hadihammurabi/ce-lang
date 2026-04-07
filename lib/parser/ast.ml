@@ -27,7 +27,7 @@ type expr =
   | Or of expr * expr
   | Neg of expr
   | Call of string * expr list
-  | Var of string
+  | Let of string
   | Array of int * types * expr list
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
@@ -35,7 +35,8 @@ type expr =
 and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
-  | DefVar of string * types * expr
+  | DefLet of string * bool * types * expr
+  | Assign of string * expr
   | Return of expr
   | Block of stmt list
   | For of stmt list
@@ -46,7 +47,7 @@ let rec to_string = function
   | Bool b -> string_of_bool b
   | Int n -> string_of_int n
   | Float f -> string_of_float f
-  | Var name -> name
+  | Let name -> name
   | Add (l, r) -> Printf.sprintf "(%s + %s)" (to_string l) (to_string r)
   | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r)
   | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r)
@@ -69,7 +70,8 @@ let rec to_string = function
 let exec = function
   | Expr _ -> ()
   | DefFN (name, params, ty, _body) -> ()
-  | DefVar (name, ty, value) -> ()
+  | DefLet (name, ismut, ty, value) -> ()
+  | Assign _ -> ()
   | Return _ -> ()
   | Block _ -> ()
   | For _ -> ()

@@ -19,8 +19,9 @@ type opcode =
   | Or
   | Neg
   | Return
-  | DefVar of string
-  | Var of string
+  | DefLet of string * bool
+  | Let of string
+  | Assign of string
   | DefFN of string * Ast.param list
   | Call of string * int
   | LoadParam of string
@@ -47,8 +48,9 @@ let to_string = function
   | Or -> "OR"
   | Neg -> "NEG"
   | Return -> "RETURN"
-  | DefVar name -> Printf.sprintf "DEF_VAR     %s" name
-  | Var name -> Printf.sprintf "LOAD_VAR    %s" name
+  | DefLet ( name, _ ) -> Printf.sprintf "DEF_LET     %s" name
+  | Let name -> Printf.sprintf "LOAD_LET    %s" name
+  | Assign name -> Printf.sprintf "ASSIGN    %s" name
   | DefFN (name, _) -> Printf.sprintf "DEF_FN      %s" name
   | Call (f, n) -> Printf.sprintf "CALL        %s/%d" f n
   | LoadParam name -> Printf.sprintf "LOAD_PARAM  %s" name
@@ -59,7 +61,7 @@ let to_string = function
 type program = {
   code : opcode array;
   functions : (string * Ast.param list * Ast.types * Ast.stmt list) list;
-  globals : (string * Ast.types * Ast.expr) list;
+  globals : (string * bool * Ast.types * Ast.expr) list;
 }
 
 let dump (code : opcode array) =

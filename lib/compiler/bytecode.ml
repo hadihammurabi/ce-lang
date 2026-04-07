@@ -148,7 +148,7 @@ let rec compile_expr_to_c oc = function
           let call_args = String.concat ", " arg_names in
           Printf.fprintf oc "        %s(%s);\n" name call_args;
           output_string oc "    }\n")
-  | Ast.Var name ->
+  | Ast.Let name ->
       Printf.fprintf oc "    stack[sp] = %s;\n" name;
       Printf.fprintf oc "    sp++;\n"
   | Ast.Array (n, ty, elems) ->
@@ -203,7 +203,7 @@ let rec compile_expr_to_c oc = function
 
 and compile_stmt_to_c oc = function
   | Ast.Expr e -> compile_expr_to_c oc e
-  | Ast.DefVar (name, _ty, expr) ->
+  | Ast.DefLet (name, ismut, ty, expr) ->
       compile_expr_to_c oc expr;
       Printf.fprintf oc "    Value %s = pop();\n" name
   | Ast.DefFN _ -> ()
@@ -219,6 +219,9 @@ and compile_stmt_to_c oc = function
       List.iter (compile_stmt_to_c oc) body;
       output_string oc "    }\n"
   | Ast.Break -> output_string oc "    break;\n"
+  | Ast.Assign (name, expr) ->
+      compile_expr_to_c oc expr;
+      Printf.fprintf oc "    %s = pop();\n" name
 
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in
@@ -336,7 +339,7 @@ let write_c_wrapper filename code functions globals =
   output_string oc "}\n\n";
 
   List.iter
-    (fun (name, _ty, _expr) -> Printf.fprintf oc "Value %s;\n" name)
+    (fun (name, ismut, _ty, _expr) -> Printf.fprintf oc "Value %s;\n" name)
     globals;
   output_string oc "\n";
 
@@ -370,11 +373,11 @@ let write_c_wrapper filename code functions globals =
   output_string oc "int main() {\n";
 
   List.iter
-    (fun (name, _ty, expr) ->
+    (fun (name, _is_mut, _ty, expr) ->
       Printf.fprintf oc "    sp = 0;\n";
       compile_expr_to_c oc expr;
-      Printf.fprintf oc "    %s = pop();\n\n" name)
-    globals;
+      Printf.fprintf oc "    *(Value*)&%s = pop();\n\n" name)
+  globals;
 
   output_string oc "    fn_main();\n";
   output_string oc "    return 0;\n";

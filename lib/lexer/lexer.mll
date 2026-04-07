@@ -17,7 +17,8 @@ rule tokenize = parse
   | digit+             { INT (int_of_string (Lexing.lexeme lexbuf)) }
 
   | "fn"               { FN }
-  | "var"              { VAR }          
+  | "let"              { LET }          
+  | "mut"              { MUT }
   | "if"               { IF }
   | "else"             { ELSE }
   | "for"               { FOR }

@@ -7,7 +7,7 @@
 %token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH EQEQ LT LTE GT GTE AND OR
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS
-%token          EOF FN VAR RETURN
+%token          EOF FN LET RETURN MUT
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_INT TYPE_FLOAT
 %token          IF ELSE FOR BREAK
@@ -27,7 +27,8 @@ prog:
 
 stmt:
   | def_fn          { $1 }
-  | def_var         { $1 }
+  | def_let         { $1 }
+  | name = IDENT EQUALS e = expr { Assign (name, e) }
   | RETURN expr     { Return $2 }
   | BREAK           { Break }
   | block           { Block $1 }
@@ -52,8 +53,9 @@ stmt_list:
   | { [] }
   | stmt stmt_list { $1 :: $2 }
 
-def_var:
-  | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
+def_let:
+  | LET name = IDENT ty = types EQUALS e = expr { DefLet (name, false, ty, e) }
+  | LET MUT name = IDENT ty = types EQUALS e = expr { DefLet (name, true, ty, e) }
 
 type_scalar:
   | TYPE_VOID  { TypeVoid }
@@ -84,7 +86,7 @@ expr_simple:
   | n = INT                                                       { Int n }
   | f = FLOAT                                                     { Float f }
   | s = STRING                                                    { String s }
-  | id = IDENT                                                    { Var id }
+  | id = IDENT                                                    { Let id }
   | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | LPAREN e = expr RPAREN                                        { e }

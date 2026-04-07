@@ -5,10 +5,11 @@ type ctx = {
   mutable code : opcode list;
   mutable functions :
     (string * Ast.param list * Ast.types * Ast.stmt list) list;
-  mutable globals : (string * Ast.types * Ast.expr) list;
+  mutable globals : (string * bool * Ast.types * Ast.expr) list;
+  env : (string, bool) Hashtbl.t;
 }
 
-let make_ctx () = { code = []; functions = []; globals = [] }
+let make_ctx () = { code = []; functions = []; globals = []; env = Hashtbl.create 16; }
 let emit ctx op = ctx.code <- op :: ctx.code
 let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 
@@ -70,7 +71,7 @@ let rec compile_expr ctx = function
   | Ast.Call (fn, args) ->
       List.iter (compile_expr ctx) args;
       emit ctx (Call (fn, List.length args))
-  | Ast.Var name -> emit ctx (Var name)
+  | Ast.Let name -> emit ctx (Let name)
   | Ast.Array (n, ty, elems) ->
       List.iter (compile_expr ctx) elems;
       emit ctx (Push_array (n, ty))
@@ -95,10 +96,22 @@ and compile_stmt ctx = function
       emit ctx Pop
   | Ast.DefFN (name, params, ty, body) ->
       emit ctx (DefFN (name, params));
+      List.iter (fun p -> Hashtbl.add ctx.env p.Ast.name false) params; 
       register_function ctx name params ty body
-  | Ast.DefVar (name, ty, value) ->
-      emit ctx (DefVar name);
-      ctx.globals <- (name, ty, value) :: ctx.globals
+  | Ast.DefLet (name, ismut, ty, value) ->
+      compile_expr ctx value;
+      Hashtbl.add ctx.env name ismut;
+      emit ctx (DefLet (name, ismut));
+      ctx.globals <- (name, ismut, ty, value) :: ctx.globals
+  | Ast.Assign (name, expr) ->
+      (match Hashtbl.find_opt ctx.env name with
+       | None -> 
+           failwith (Printf.sprintf "Variable '%s' is not defined" name)
+       | Some false -> 
+           failwith (Printf.sprintf "Cannot assign to immutable variable '%s'. Use 'let mut' instead." name)
+       | Some true -> ());
+      compile_expr ctx expr;
+      emit ctx (Assign name)
   | Ast.Return e ->
       compile_expr ctx e;
       emit ctx Return
