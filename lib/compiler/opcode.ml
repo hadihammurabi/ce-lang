@@ -5,11 +5,11 @@ type opcode =
   | Push_float  of float
   | Push_string of string
   | Push_array of int * Ast.types
+  | Push_bool   of bool
 
-  | Add
-  | Sub
-  | Mul
-  | Div
+  | Add | Sub | Mul | Div
+  | Eq | Lt | Lte | Gt | Gte 
+  | And | Or
   | Neg
   | Return
 
@@ -26,10 +26,10 @@ let to_string = function
   | Push_float f  -> Printf.sprintf "PUSH_FLOAT  %g"    f
   | Push_string s -> Printf.sprintf "PUSH_STRING %S"    s
   | Push_array (n, _) -> Printf.sprintf "PUSH_ARRAY  [%d]" n
-  | Add           -> "ADD"
-  | Sub           -> "SUB"
-  | Mul           -> "MUL"
-  | Div           -> "DIV"
+  | Push_bool b   -> Printf.sprintf "PUSH_BOOL   %b" b
+  | Add -> "ADD"  | Sub -> "SUB"  | Mul -> "MUL"  | Div -> "DIV"
+  | Gt -> "GT"    | Gte -> "GTE"  | Eq -> "EQ"    | Lt -> "LT"    | Lte -> "LTE" 
+  | And -> "AND"  | Or -> "OR"
   | Neg           -> "NEG"
   | Return        -> "RETURN"
   | DefVar name   -> Printf.sprintf "DEF_VAR     %s"   name

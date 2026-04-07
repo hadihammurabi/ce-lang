@@ -19,6 +19,9 @@ rule tokenize = parse
   | "fn"               { FN }
   | "var"              { VAR }          
   | "return"           { RETURN }
+  | "bool"             { TYPE_BOOL }     
+  | "true"             { TRUE }     
+  | "false"            { FALSE }     
   | "int"              { TYPE_INT }     
   | "float"            { TYPE_FLOAT }   
   | "void"             { TYPE_VOID }   
@@ -38,6 +41,14 @@ rule tokenize = parse
   | ']'                { RBRACKET }
   | ','                { COMMA }
   | '='                { EQUALS }       
+
+  | "=="               { EQEQ }
+  | "<="               { LTE }
+  | ">="               { GTE }
+  | "<"                { LT }
+  | ">"                { GT }
+  | "&&"               { AND }
+  | "||"               { OR }
 
   | eof                { EOF }
   | _ as c             { raise (Lexer_error (Printf.sprintf "Unexpected character: '%c'" c, lexbuf.lex_curr_p)) }

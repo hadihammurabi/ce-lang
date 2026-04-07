@@ -1,11 +1,5 @@
 open Ce_parser
 
-let rec c_elem_type = function
-  | Ast.TypeInt          -> "int64_t"
-  | Ast.TypeFloat        -> "double"
-  | Ast.TypeVoid         -> "void"
-  | Ast.TypeArray (_, t) -> c_elem_type t
-
 let rec compile_expr_to_c oc = function
   | Ast.Int n ->
     Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
@@ -13,6 +7,8 @@ let rec compile_expr_to_c oc = function
     Printf.fprintf oc "    push_float(%.17g);\n" f
   | Ast.String s ->
     Printf.fprintf oc "    push_string(\"%s\");\n" (String.escaped s)
+  | Ast.Bool b ->
+    Printf.fprintf oc "    push_bool(%d);\n" (if b then 1 else 0)
   | Ast.Add (l, r) ->
     compile_expr_to_c oc l;
     compile_expr_to_c oc r;
@@ -45,6 +41,53 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf / rf); } }\n"
+  | Ce_parser.Ast.Eq (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i == r.value.i);\n";
+    output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
+    output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
+    output_string oc "             push_bool(lf == rf); } }\n"
+  | Ce_parser.Ast.Lt (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i < r.value.i);\n";
+    output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
+    output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
+    output_string oc "             push_bool(lf < rf); } }\n"
+  | Ce_parser.Ast.Gt (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i > r.value.i);\n";
+    output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
+    output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
+    output_string oc "             push_bool(lf > rf); } }\n"
+  | Ce_parser.Ast.Lte (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i <= r.value.i);\n";
+    output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
+    output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
+    output_string oc "             push_bool(lf <= rf); } }\n"
+  | Ce_parser.Ast.Gte (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i >= r.value.i);\n";
+    output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
+    output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
+    output_string oc "             push_bool(lf >= rf); } }\n"
+  | Ce_parser.Ast.And (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
+    output_string oc "      int rv = (r.type == 0) ? (r.value.i != 0) : (r.value.f != 0.0);\n";
+    output_string oc "      push_bool(lv && rv); }\n"
+  | Ce_parser.Ast.Or (l, r) ->
+    compile_expr_to_c oc l; compile_expr_to_c oc r;
+    output_string oc "    { Value r = pop(); Value l = pop();\n";
+    output_string oc "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
+    output_string oc "      int rv = (r.type == 0) ? (r.value.i != 0) : (r.value.f != 0.0);\n";
+    output_string oc "      push_bool(lv || rv); }\n"
   | Ast.Neg e ->
     compile_expr_to_c oc e;
     output_string oc "    { Value v = pop();\n";
@@ -160,6 +203,7 @@ let write_c_wrapper filename code functions globals =
   output_string oc "                }\n";
   output_string oc "                printf(\"]\");\n";
   output_string oc "                break; }\n";
+  output_string oc "            case 4: printf(\"%s\", v.value.i ? \"true\" : \"false\"); break;\n";
   output_string oc "        }\n";
   output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
@@ -183,12 +227,19 @@ let write_c_wrapper filename code functions globals =
   output_string oc "                    else if(e.type==2) printf(\"%s\", e.value.s);\n";
   output_string oc "                    if(j < v.value.arr.len - 1) printf(\", \");\n";
   output_string oc "                }\n";
+  output_string oc "            case 4: printf(\"%s\", v.value.i ? \"true\" : \"false\"); break;\n";
   output_string oc "                printf(\"]\");\n";
   output_string oc "                break; }\n";
   output_string oc "        }\n";
   output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
   output_string oc "    sp -= argc;\n";
+  output_string oc "}\n\n";
+
+  output_string oc "void push_bool(int b) {\n";
+  output_string oc "    stack[sp].type = 4;\n";
+  output_string oc "    stack[sp].value.i = b;\n";
+  output_string oc "    sp++;\n";
   output_string oc "}\n\n";
 
   List.iter (fun (name, _ty, _expr) ->

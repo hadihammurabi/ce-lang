@@ -12,6 +12,7 @@ let dump (code : opcode array) (functions : (string * types * stmt list) list) =
         | TypeInt -> "int"
         | TypeFloat -> "float"
         | TypeVoid -> "void"
+        | TypeBool -> "bool"
         | TypeArray(length, ty) -> Printf.sprintf "[%d]%s" length (show_types ty)
       in
       Printf.printf "Function: %s -> %s\n" name type_str;

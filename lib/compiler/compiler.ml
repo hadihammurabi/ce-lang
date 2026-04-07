@@ -41,6 +41,15 @@ let rec compile_expr ctx = function
     compile_expr ctx r;
     emit ctx Div
 
+  | Ast.Eq (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Eq
+  | Ast.Lt (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Lt
+  | Ast.Gt (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Gt
+  | Ast.Lte (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Lte
+  | Ast.Gte (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Gte
+  | Ast.And (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx And
+  | Ast.Or (l, r) -> compile_expr ctx l; compile_expr ctx r; emit ctx Or
+  | Ast.Bool b   -> emit ctx (Push_bool b)
+
   | Ast.Neg e ->
     compile_expr ctx e;
     emit ctx Neg
