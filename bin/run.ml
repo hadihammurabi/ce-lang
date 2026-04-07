@@ -1,4 +1,5 @@
 open Ce_linker
+open Ce_compiler
 open Cmdliner
 
 let execute file =
@@ -6,7 +7,7 @@ let execute file =
   let visited = Hashtbl.create 10 in
   let ast = Build.parse_file visited file in
   let _ =
-    try ast |> Ce_compiler.Compiler.compile |> Linker.export binary_name
+    try ast |> Typer.check_program |> Compiler.compile |> Linker.export binary_name
     with Failure msg ->
       Printf.printf "Error: %s\n" msg;
       exit 1

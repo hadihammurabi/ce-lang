@@ -9,7 +9,7 @@ let execute file bytecode =
   let c_file = base_name ^ ".c" in
   let _ =
     try
-      let prog = Compiler.compile ast in
+      let prog = Compiler.compile @@ Typer.check_program ast in
       Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals
     with Failure msg ->
       Printf.printf "Error: %s\n" msg;
