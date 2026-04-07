@@ -6,11 +6,11 @@
 %token <float>  FLOAT
 %token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH EQEQ LT LTE GT GTE AND OR
-%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS
-%token          EOF FN LET RETURN MUT
+%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT
+%token          EOF RETURN IMPORT BREAK
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_INT TYPE_FLOAT
-%token          IF ELSE FOR BREAK
+%token          LET MUT FN IF ELSE FOR
 
 %left OR AND
 %left EQEQ LT LTE GT GTE
@@ -28,12 +28,13 @@ prog:
 stmt:
   | def_fn          { $1 }
   | def_let         { $1 }
-  | name = IDENT EQUALS e = expr { Assign (name, e) }
+  | name = path EQUALS e = expr { Assign (name, e) }
   | RETURN expr     { Return $2 }
   | BREAK           { Break }
   | block           { Block $1 }
   | expr            { Expr $1 }
   | FOR body = block { For body }
+  | IMPORT path = module_path { Import path }
 
 block:
   | LBRACE body = stmt_list RBRACE { body }
@@ -80,14 +81,22 @@ def_fn:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
     { DefFN (name, params, ty, body) }
 
+module_path:
+  | IDENT { [$1] }
+  | IDENT DOT module_path { $1 :: $3 }
+
+path:
+  | id = IDENT { id }
+  | id = IDENT DOT p = path { id ^ "." ^ p }
+
 expr_simple:
   | TRUE                          { Bool true }
   | FALSE                         { Bool false }
   | n = INT                                                       { Int n }
   | f = FLOAT                                                     { Float f }
   | s = STRING                                                    { String s }
-  | id = IDENT                                                    { Let id }
-  | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
+  | id = path                                                    { Let id }
+  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | LPAREN e = expr RPAREN                                        { e }
   | a = array                                                     { a }

@@ -123,6 +123,7 @@ and compile_stmt ctx = function
   | Ast.Block body -> List.iter (compile_stmt ctx) body
   | Ast.For body -> List.iter (compile_stmt ctx) body
   | Ast.Break -> emit ctx Break
+  | Ast.Import _ -> ()
 
 let compile (stmts : Ast.stmt list) : program =
   let ctx = make_ctx () in

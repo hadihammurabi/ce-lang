@@ -41,6 +41,7 @@ and stmt =
   | Block of stmt list
   | For of stmt list
   | Break
+  | Import of string list
 
 let rec to_string = function
   | String s -> s
@@ -76,3 +77,4 @@ let exec = function
   | Block _ -> ()
   | For _ -> ()
   | Break -> ()
+  | Import _ -> ()

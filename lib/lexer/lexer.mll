@@ -31,6 +31,7 @@ rule tokenize = parse
   | "int"              { TYPE_INT }     
   | "float"            { TYPE_FLOAT }   
   | "void"             { TYPE_VOID }   
+  | "import"           { IMPORT }
   | alpha alnum*       { IDENT (Lexing.lexeme lexbuf) }
 
   | '"'                { let buf = Buffer.create 32 in string_lit buf lexbuf }
@@ -47,6 +48,7 @@ rule tokenize = parse
   | ']'                { RBRACKET }
   | ','                { COMMA }
   | '='                { EQUALS }       
+  | "."                { DOT }
 
   | "=="               { EQEQ }
   | "<="               { LTE }
