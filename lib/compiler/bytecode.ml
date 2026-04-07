@@ -41,48 +41,48 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf / rf); } }\n"
-  | Ce_parser.Ast.Eq (l, r) ->
+  | Ast.Eq (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
-    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i == r.value.i);\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_bool(l.value.i == r.value.i);\n";
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_bool(lf == rf); } }\n"
-  | Ce_parser.Ast.Lt (l, r) ->
+  | Ast.Lt (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
-    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i < r.value.i);\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_bool(l.value.i < r.value.i);\n";
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_bool(lf < rf); } }\n"
-  | Ce_parser.Ast.Gt (l, r) ->
+  | Ast.Gt (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
-    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i > r.value.i);\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_bool(l.value.i > r.value.i);\n";
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_bool(lf > rf); } }\n"
-  | Ce_parser.Ast.Lte (l, r) ->
+  | Ast.Lte (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
-    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i <= r.value.i);\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_bool(l.value.i <= r.value.i);\n";
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_bool(lf <= rf); } }\n"
-  | Ce_parser.Ast.Gte (l, r) ->
+  | Ast.Gte (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
-    output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i >= r.value.i);\n";
+    output_string oc "      if(l.type == 0 && r.type == 0) push_bool(l.value.i >= r.value.i);\n";
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_bool(lf >= rf); } }\n"
-  | Ce_parser.Ast.And (l, r) ->
+  | Ast.And (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
     output_string oc "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
     output_string oc "      int rv = (r.type == 0) ? (r.value.i != 0) : (r.value.f != 0.0);\n";
     output_string oc "      push_bool(lv && rv); }\n"
-  | Ce_parser.Ast.Or (l, r) ->
+  | Ast.Or (l, r) ->
     compile_expr_to_c oc l; compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
     output_string oc "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
