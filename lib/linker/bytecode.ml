@@ -12,134 +12,89 @@ let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
   | Ast.Add (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_int(l.value.i + r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_float(lf + rf); } }\n"
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l + r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l + r); }\n"
   | Ast.Sub (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_int(l.value.i - r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_float(lf - rf); } }\n"
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l - r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l - r); }\n"
   | Ast.Mul (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_int(l.value.i * r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_float(lf * rf); } }\n"
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l * r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l * r); }\n"
   | Ast.Div (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_int(l.value.i / r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_float(lf / rf); } }\n"
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l / r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l / r); }\n"
   | Ast.Mod (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i % r.value.i);\n";
-      output_string oc "      else { /* Handle float modulo if needed */ } }\n" (* *)
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l % r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l % r); }\n"
   | Ast.Eq (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_bool(l.value.i == r.value.i);\n";
-      output_string oc
-        "      else if(l.type == 2 && r.type == 2) push_bool(strcmp(l.value.s, \
-         r.value.s) == 0);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_bool(lf == rf); } }\n"
+      if l.ty = Ast.TypeInt || l.ty = Ast.TypeBool then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l == r); }\n"
+      else if l.ty = Ast.TypeFloat then
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l == r); }\n"
+      else if l.ty = Ast.TypeString then
+        output_string oc "    { char* r = pop().value.s; char* l = pop().value.s; push_bool(strcmp(l, r) == 0); }\n"
   | Ast.Lt (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_bool(l.value.i < r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_bool(lf < rf); } }\n"
+      if l.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l < r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l < r); }\n"
   | Ast.Gt (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_bool(l.value.i > r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_bool(lf > rf); } }\n"
+      if l.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l > r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l > r); }\n"
   | Ast.Lte (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_bool(l.value.i <= r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_bool(lf <= rf); } }\n"
+      if l.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l <= r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l <= r); }\n"
   | Ast.Gte (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      if(l.type == 0 && r.type == 0) push_bool(l.value.i >= r.value.i);\n";
-      output_string oc
-        "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
-      output_string oc
-        "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
-      output_string oc "             push_bool(lf >= rf); } }\n"
+      if l.ty = Ast.TypeInt then
+        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l >= r); }\n"
+      else
+        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l >= r); }\n"
   | Ast.And (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
-      output_string oc
-        "      int rv = (r.type == 0) ? (r.value.i != 0) : (r.value.f != 0.0);\n";
-      output_string oc "      push_bool(lv && rv); }\n"
+      output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l && r); }\n"
   | Ast.Or (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { Value r = pop(); Value l = pop();\n";
-      output_string oc
-        "      int lv = (l.type == 0) ? (l.value.i != 0) : (l.value.f != 0.0);\n";
-      output_string oc
-        "      int rv = (r.type == 0) ? (r.value.i != 0) : (r.value.f != 0.0);\n";
-      output_string oc "      push_bool(lv || rv); }\n"
+      output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l || r); }\n"
   | Ast.Neg e ->
       compile_expr_to_c oc e;
-      output_string oc "    { Value v = pop();\n";
-      output_string oc "      if(v.type == 0) push_int(-v.value.i);\n";
-      output_string oc "      else push_float(-v.value.f); }\n"
+      if e.ty = Ast.TypeInt then
+        output_string oc "    { int64_t v = pop().value.i; push_int(-v); }\n"
+      else
+        output_string oc "    { double v = pop().value.f; push_float(-v); }\n"
   | Ast.Call (name, args) -> (
       List.iter (compile_expr_to_c oc) args;
       let argc = List.length args in
@@ -178,29 +133,20 @@ let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
   | Ast.If (cond, then_body, elif_branches, else_body) ->
       output_string oc "    {\n";
       compile_expr_to_c oc cond;
-      output_string oc "    Value __cond = pop();\n";
-      output_string oc
-        "    int __cv = (__cond.type == 0) ? (__cond.value.i != 0)\n";
-      output_string oc
-        "             : (__cond.type == 4) ? (__cond.value.i != 0)\n";
-      output_string oc "             : (__cond.value.f != 0.0);\n";
-      output_string oc "    if (__cv) {\n";
+      
+      output_string oc "    if (pop().value.i) {\n";
       List.iter (compile_stmt_to_c oc) then_body;
       output_string oc "    }\n";
+      
       List.iter
         (fun (econd, ebody) ->
           output_string oc "    else {\n";
           compile_expr_to_c oc econd;
-          output_string oc "    Value __cond = pop();\n";
-          output_string oc
-            "    int __cv = (__cond.type == 0) ? (__cond.value.i != 0)\n";
-          output_string oc
-            "             : (__cond.type == 4) ? (__cond.value.i != 0)\n";
-          output_string oc "             : (__cond.value.f != 0.0);\n";
-          output_string oc "    if (__cv) {\n";
+          output_string oc "    if (pop().value.i) {\n";
           List.iter (compile_stmt_to_c oc) ebody;
           output_string oc "    }\n")
         elif_branches;
+        
       (match else_body with
       | Some stmts ->
           output_string oc "    else {\n";
