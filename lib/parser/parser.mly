@@ -37,8 +37,13 @@ types:
   | TYPE_FLOAT { TypeFloat }
   | TYPE_VOID { TypeVoid }
 
+param:
+  | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
+
 def_fn:
-    | FN name = IDENT LPAREN RPAREN ty = types LBRACE newline body = def_fn_body newline RBRACE { DefFN (name, ty, body) }
+    | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types
+      LBRACE newline body = def_fn_body newline RBRACE
+      { DefFN (name, params, ty, body) }
 
 def_fn_body:
   | { [] }

@@ -8,9 +8,9 @@ let compile_and_link output_file c_file =
     | code -> Printf.eprintf "Link failed with code %d\n" code; exit 1)
   | code -> Printf.eprintf "Compilation failed with code %d\n" code; exit 1
 
-let cleanup_temp c_file =
-  let base_name = try String.sub c_file 0 (String.rindex c_file '.') with Not_found -> c_file in
+let cleanup_temp base_name =
   let obj_file = base_name ^ ".o" in
+  let c_file = base_name ^ ".c" in
   if Sys.file_exists obj_file then (
     Sys.remove obj_file
   );

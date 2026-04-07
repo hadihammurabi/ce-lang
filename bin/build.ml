@@ -27,9 +27,6 @@ let remove_extension filename =
 let compile code = 
   try
     code |> parse |> Compiler.compile
-    (* Debug.dump prog.code prog.functions *)
-    (* Vm.main prog.code prog.functions *)
-
   with
   | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
     Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;

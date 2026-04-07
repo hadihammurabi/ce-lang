@@ -1,11 +1,14 @@
+open Ce_parser
+
+let call_counter = ref 0
 let rec compile_expr_to_c oc = function
-  | Ce_parser.Ast.Int n ->
+  | Ast.Int n ->
     Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
-  | Ce_parser.Ast.Float f ->
+  | Ast.Float f ->
     Printf.fprintf oc "    push_float(%.17g);\n" f
-  | Ce_parser.Ast.String s ->
+  | Ast.String s ->
     Printf.fprintf oc "    push_string(\"%s\");\n" (String.escaped s)
-  | Ce_parser.Ast.Add (l, r) ->
+  | Ast.Add (l, r) ->
     compile_expr_to_c oc l;
     compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
@@ -13,7 +16,7 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf + rf); } }\n"
-  | Ce_parser.Ast.Sub (l, r) ->
+  | Ast.Sub (l, r) ->
     compile_expr_to_c oc l;
     compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
@@ -21,7 +24,7 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf - rf); } }\n"
-  | Ce_parser.Ast.Mul (l, r) ->
+  | Ast.Mul (l, r) ->
     compile_expr_to_c oc l;
     compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
@@ -29,7 +32,7 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf * rf); } }\n"
-  | Ce_parser.Ast.Div (l, r) ->
+  | Ast.Div (l, r) ->
     compile_expr_to_c oc l;
     compile_expr_to_c oc r;
     output_string oc "    { Value r = pop(); Value l = pop();\n";
@@ -37,30 +40,43 @@ let rec compile_expr_to_c oc = function
     output_string oc "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
     output_string oc "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
     output_string oc "             push_float(lf / rf); } }\n"
-  | Ce_parser.Ast.Neg e ->
+  | Ast.Neg e ->
     compile_expr_to_c oc e;
     output_string oc "    { Value v = pop();\n";
     output_string oc "      if(v.type == 0) push_int(-v.value.i);\n";
     output_string oc "      else push_float(-v.value.f); }\n"
-  | Ce_parser.Ast.Call (name, args) ->
+  | Ast.Call (name, args) ->
     List.iter (compile_expr_to_c oc) args;
     let argc = List.length args in
     (match name with
     | "println" -> Printf.fprintf oc "    builtin_println(%d);\n" argc
-    | "print" -> Printf.fprintf oc "    builtin_print(%d);\n" argc
-    | _ -> Printf.fprintf oc "    %s();\n" name)
-  | Ce_parser.Ast.Var (name) ->
+    | "print"   -> Printf.fprintf oc "    builtin_print(%d);\n" argc
+    | _ ->
+      output_string oc "    {\n";
+      let arg_names = List.mapi (fun i _ ->
+        Printf.sprintf "__arg%d" i
+      ) args in
+      List.iter (fun aname ->
+        Printf.fprintf oc "        Value %s = pop();\n" aname
+      ) (List.rev arg_names);
+      let call_args = String.concat ", " (List.map (fun aname ->
+        Printf.sprintf "%s.value.i" aname
+      ) arg_names) in
+      Printf.fprintf oc "        %s(%s);\n" name call_args;
+      output_string oc "    }\n"
+    )
+  | Ast.Var (name) ->
     Printf.fprintf oc "    stack[sp] = %s;\n" name;
     Printf.fprintf oc "    sp++;\n"
 
 let rec compile_stmt_to_c oc = function
-  | Ce_parser.Ast.Expr e -> 
+  | Ast.Expr e -> 
       compile_expr_to_c oc e
-  | Ce_parser.Ast.DefVar (name, _ty, expr) ->
+  | Ast.DefVar (name, _ty, expr) ->
       compile_expr_to_c oc expr;
       Printf.fprintf oc "    Value %s = pop();\n" name
-  | Ce_parser.Ast.DefFN _ ->  ()
-  | Ce_parser.Ast.Return e ->
+  | Ast.DefFN _ ->  ()
+  | Ast.Return e ->
     compile_expr_to_c oc e;
     Printf.fprintf oc "    return;\n"
 
@@ -137,26 +153,58 @@ let write_c_wrapper filename code functions globals =
   output_string oc "    sp -= argc;\n";
   output_string oc "}\n\n";
 
-  List.iter (fun (fname, ty, _body) ->
-    let fn_name = if fname = "main" then "fn_main" else fname in
-    Printf.fprintf oc "void %s();\n" fn_name
-  ) functions;
-  output_string oc "\n";
-
   List.iter (fun (name, _ty, _expr) ->
     Printf.fprintf oc "Value %s;\n" name
   ) globals;
   output_string oc "\n";
-  
-  List.iter (fun (fname, ty, body) ->
+
+  List.iter (fun (fname, params, _ty, _body) ->
+  let fn_name = if fname = "main" then "fn_main" else fname in
+  let param_str =
+    if params = [] then "void"
+    else String.concat ", " (List.map (fun p ->
+      let t = match p.Ast.ty with
+        | Ast.TypeInt   -> "int64_t"
+        | Ast.TypeFloat -> "double"
+        | Ast.TypeVoid  -> "void"
+      in
+      Printf.sprintf "%s %s" t p.name
+    ) params)
+  in
+  Printf.fprintf oc "void %s(%s);\n" fn_name param_str
+) functions;
+  output_string oc "\n";
+
+  List.iter (fun (fname, params, _ty, body) ->
     let fn_name = if fname = "main" then "fn_main" else fname in
-    Printf.fprintf oc "void %s() {\n" fn_name;
-    List.iter (fun expr ->
-      compile_stmt_to_c oc expr
-    ) body;
+    let param_str =
+      if params = [] then "void"
+      else String.concat ", " (List.map (fun p ->
+        let t = match p.Ast.ty with
+          | Ast.TypeInt   -> "int64_t"
+          | Ast.TypeFloat -> "double"
+          | Ast.TypeVoid  -> "void"
+        in
+        Printf.sprintf "%s arg_%s" t p.Ast.name
+      ) params)
+    in
+    Printf.fprintf oc "void %s(%s) {\n" fn_name param_str; 
+    List.iter (fun p ->
+      match p.Ast.ty with
+      | Ast.TypeInt ->
+        Printf.fprintf oc "    push_int(arg_%s);\n" p.Ast.name;
+        Printf.fprintf oc "    Value %s_val = pop();\n" p.Ast.name; 
+        Printf.fprintf oc "    Value %s = %s_val;\n" p.Ast.name p.Ast.name 
+      | Ast.TypeFloat -> Printf.fprintf oc "    push_float(arg_%s);\n" p.Ast.name;
+        Printf.fprintf oc "    Value %s_val = pop();\n" p.Ast.name;
+        Printf.fprintf oc "    Value %s = %s_val;\n" p.Ast.name p.Ast.name
+      | Ast.TypeVoid -> ()
+    ) params;
+
+    List.iter (compile_stmt_to_c oc) body;
     output_string oc "}\n\n"
   ) functions;
- 
+
   output_string oc "int main() {\n";
 
   List.iter (fun (name, _ty, expr) ->

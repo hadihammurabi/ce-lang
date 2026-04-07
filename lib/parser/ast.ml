@@ -1,5 +1,10 @@
 type types = TypeInt | TypeFloat | TypeVoid
 
+type param = {
+  name: string;
+  ty: types; (* data type *)
+}
+
 type expr =
   | Int    of int
   | Float  of float
@@ -27,12 +32,12 @@ let rec to_string = function
 
 type stmt =
   | Expr of expr
-  | DefFN of string * types * stmt list
+  | DefFN of string * param list * types * stmt list
   | DefVar of string * types * expr
   | Return of expr
 
 let exec = function
   | Expr _ -> ()
-  | DefFN (name, ty, _body) -> ()
+  | DefFN (name, params, ty, _body) -> ()
   | DefVar (name, ty, value) -> ()
   | Return _ -> ()
