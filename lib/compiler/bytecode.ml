@@ -56,6 +56,7 @@ let rec compile_expr_to_c oc = function
       output_string oc "    { Value r = pop(); Value l = pop();\n";
       output_string oc
         "      if(l.type == 0 && r.type == 0) push_bool(l.value.i == r.value.i);\n";
+      output_string oc "      else if(l.type == 2 && r.type == 2) push_bool(strcmp(l.value.s, r.value.s) == 0);\n";
       output_string oc
         "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
       output_string oc
