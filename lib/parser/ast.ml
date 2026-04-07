@@ -4,12 +4,16 @@ type types =
   | TypeString
   | TypeInt
   | TypeFloat
+  | TypeUnknown
   | TypeArray of int * types
 [@@deriving show]
 
-type param = { name : string; ty : types (* data type *) }
+type expr = {
+  kind : expr_kind;
+  ty : types; (* This is the 'T' in TAST *)
+}
 
-type expr =
+and expr_kind =
   | String of string
   | Bool of bool
   | Int of int
@@ -33,6 +37,7 @@ type expr =
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
 
+and param = { name : string; ty : types (* data type *) }
 and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
@@ -44,39 +49,39 @@ and stmt =
   | Break
   | Import of string list
 
-let rec to_string = function
-  | String s -> s
-  | Bool b -> string_of_bool b
-  | Int n -> string_of_int n
-  | Float f -> string_of_float f
-  | Let name -> name
-  | Add (l, r) -> Printf.sprintf "(%s + %s)" (to_string l) (to_string r)
-  | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r)
-  | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r)
-  | Div (l, r) -> Printf.sprintf "(%s / %s)" (to_string l) (to_string r)
-  | Mod (l, r) -> Printf.sprintf "(%s %% %s)" (to_string l) (to_string r)
-  | Eq (l, r) -> Printf.sprintf "(%s == %s)" (to_string l) (to_string r)
-  | Lt (l, r) -> Printf.sprintf "(%s < %s)" (to_string l) (to_string r)
-  | Lte (l, r) -> Printf.sprintf "(%s <= %s)" (to_string l) (to_string r)
-  | Gt (l, r) -> Printf.sprintf "(%s > %s)" (to_string l) (to_string r)
-  | Gte (l, r) -> Printf.sprintf "(%s >= %s)" (to_string l) (to_string r)
-  | And (l, r) -> Printf.sprintf "(%s && %s)" (to_string l) (to_string r)
-  | Or (l, r) -> Printf.sprintf "(%s || %s)" (to_string l) (to_string r)
-  | Neg e -> Printf.sprintf "(-%s)" (to_string e)
-  | Call (f, args) ->
-      Printf.sprintf "%s(%s)" f (String.concat ", " (List.map to_string args))
-  | Array (n, t, elems) ->
-      Printf.sprintf "[%d]%s{%s}" n (show_types t)
-        (String.concat ", " (List.map to_string elems))
-  | If (cond, _, _, _) -> Printf.sprintf "if(%s)" (to_string cond)
-
-let exec = function
-  | Expr _ -> ()
-  | DefFN (name, params, ty, _body) -> ()
-  | DefLet (name, ismut, ty, value) -> ()
-  | Assign _ -> ()
-  | Return _ -> ()
-  | Block _ -> ()
-  | For _ -> ()
-  | Break -> ()
-  | Import _ -> ()
+(* let rec to_string = function *)
+(*   | String s -> s *)
+(*   | Bool b -> string_of_bool b *)
+(*   | Int n -> string_of_int n *)
+(*   | Float f -> string_of_float f *)
+(*   | Let name -> name *)
+(*   | Add (l, r) -> Printf.sprintf "(%s + %s)" (to_string l) (to_string r) *)
+(*   | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r) *)
+(*   | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r) *)
+(*   | Div (l, r) -> Printf.sprintf "(%s / %s)" (to_string l) (to_string r) *)
+(*   | Mod (l, r) -> Printf.sprintf "(%s %% %s)" (to_string l) (to_string r) *)
+(*   | Eq (l, r) -> Printf.sprintf "(%s == %s)" (to_string l) (to_string r) *)
+(*   | Lt (l, r) -> Printf.sprintf "(%s < %s)" (to_string l) (to_string r) *)
+(*   | Lte (l, r) -> Printf.sprintf "(%s <= %s)" (to_string l) (to_string r) *)
+(*   | Gt (l, r) -> Printf.sprintf "(%s > %s)" (to_string l) (to_string r) *)
+(*   | Gte (l, r) -> Printf.sprintf "(%s >= %s)" (to_string l) (to_string r) *)
+(*   | And (l, r) -> Printf.sprintf "(%s && %s)" (to_string l) (to_string r) *)
+(*   | Or (l, r) -> Printf.sprintf "(%s || %s)" (to_string l) (to_string r) *)
+(*   | Neg e -> Printf.sprintf "(-%s)" (to_string e) *)
+(*   | Call (f, args) -> *)
+(*       Printf.sprintf "%s(%s)" f (String.concat ", " (List.map to_string args)) *)
+(*   | Array (n, t, elems) -> *)
+(*       Printf.sprintf "[%d]%s{%s}" n (show_types t) *)
+(*         (String.concat ", " (List.map to_string elems)) *)
+(*   | If (cond, _, _, _) -> Printf.sprintf "if(%s)" (to_string cond) *)
+(**)
+(* let exec = function *)
+(*   | Expr _ -> () *)
+(*   | DefFN (name, params, ty, _body) -> () *)
+(*   | DefLet (name, ismut, ty, value) -> () *)
+(*   | Assign _ -> () *)
+(*   | Return _ -> () *)
+(*   | Block _ -> () *)
+(*   | For _ -> () *)
+(*   | Break -> () *)
+(*   | Import _ -> () *)
