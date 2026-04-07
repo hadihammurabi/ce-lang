@@ -50,6 +50,9 @@ let rec compile_expr ctx = function
     emit ctx (Call (fn, List.length args))
 
   | Ast.Var name -> emit ctx (Var name)
+  | Ast.Array (n, ty, elems) ->
+    List.iter (compile_expr ctx) elems;
+    emit ctx (Push_array (n, ty))
 
 let compile_stmt ctx = function
   | Ast.Expr (Call (fn, args) as e) ->

@@ -1,6 +1,11 @@
 open Ce_parser
 
-let call_counter = ref 0
+let rec c_elem_type = function
+  | Ast.TypeInt          -> "int64_t"
+  | Ast.TypeFloat        -> "double"
+  | Ast.TypeVoid         -> "void"
+  | Ast.TypeArray (_, t) -> c_elem_type t
+
 let rec compile_expr_to_c oc = function
   | Ast.Int n ->
     Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
@@ -68,6 +73,19 @@ let rec compile_expr_to_c oc = function
   | Ast.Var (name) ->
     Printf.fprintf oc "    stack[sp] = %s;\n" name;
     Printf.fprintf oc "    sp++;\n"
+  | Ast.Array(n, ty, elems) ->
+    List.iter (compile_expr_to_c oc) elems;
+    List.iter (compile_expr_to_c oc) elems;
+    Printf.fprintf oc "    {\n";
+    Printf.fprintf oc "        int __arr_size = %d;\n" n;
+    Printf.fprintf oc "        Value *__arr = (Value*)malloc(__arr_size * sizeof(Value));\n";
+    Printf.fprintf oc "        for(int __i = __arr_size - 1; __i >= 0; __i--)\n";
+    Printf.fprintf oc "            __arr[__i] = pop();\n";
+    Printf.fprintf oc "        stack[sp].type           = 3;\n";
+    Printf.fprintf oc "        stack[sp].value.arr.data = __arr;\n";
+    Printf.fprintf oc "        stack[sp].value.arr.len  = __arr_size;\n";
+    Printf.fprintf oc "        sp++;\n";
+    Printf.fprintf oc "    }\n"
 
 let rec compile_stmt_to_c oc = function
   | Ast.Expr e -> 
@@ -89,14 +107,16 @@ let write_c_wrapper filename code functions globals =
   
   output_string oc "#define STACK_SIZE 10000\n\n";
   
-  output_string oc "typedef struct {\n";
+  output_string oc "typedef struct Value Value;\n";
+  output_string oc "struct Value {\n";
   output_string oc "    int type;\n";
   output_string oc "    union {\n";
   output_string oc "        int64_t i;\n";
-  output_string oc "        double f;\n";
-  output_string oc "        char *s;\n";
+  output_string oc "        double  f;\n";
+  output_string oc "        char   *s;\n";
+  output_string oc "        struct { Value *data; int len; } arr;\n";
   output_string oc "    } value;\n";
-  output_string oc "} Value;\n\n";
+  output_string oc "};\n\n";
   
   output_string oc "static Value stack[STACK_SIZE];\n";
   output_string oc "static int sp = 0;\n\n";
@@ -131,7 +151,17 @@ let write_c_wrapper filename code functions globals =
   output_string oc "            case 0: printf(\"%ld\", v.value.i); break;\n";
   output_string oc "            case 1: printf(\"%g\", v.value.f); break;\n";
   output_string oc "            case 2: printf(\"%s\", v.value.s); break;\n";
-  output_string oc "            case 3: printf(\"()\"); break;\n";
+  output_string oc "            case 3: {\n";
+  output_string oc "                printf(\"[\");\n";
+  output_string oc "                for(int j = 0; j < v.value.arr.len; j++) {\n";
+  output_string oc "                    Value e = v.value.arr.data[j];\n";
+  output_string oc "                    if(e.type==0) printf(\"%ld\", e.value.i);\n";
+  output_string oc "                    else if(e.type==1) printf(\"%g\", e.value.f);\n";
+  output_string oc "                    else if(e.type==2) printf(\"%s\", e.value.s);\n";
+  output_string oc "                    if(j < v.value.arr.len - 1) printf(\", \");\n";
+  output_string oc "                }\n";
+  output_string oc "                printf(\"]\");\n";
+  output_string oc "                break; }\n";
   output_string oc "        }\n";
   output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
@@ -146,7 +176,17 @@ let write_c_wrapper filename code functions globals =
   output_string oc "            case 0: printf(\"%ld\", v.value.i); break;\n";
   output_string oc "            case 1: printf(\"%g\", v.value.f); break;\n";
   output_string oc "            case 2: printf(\"%s\", v.value.s); break;\n";
-  output_string oc "            case 3: printf(\"()\"); break;\n";
+  output_string oc "            case 3: {\n";
+  output_string oc "                printf(\"[\");\n";
+  output_string oc "                for(int j = 0; j < v.value.arr.len; j++) {\n";
+  output_string oc "                    Value e = v.value.arr.data[j];\n";
+  output_string oc "                    if(e.type==0) printf(\"%ld\", e.value.i);\n";
+  output_string oc "                    else if(e.type==1) printf(\"%g\", e.value.f);\n";
+  output_string oc "                    else if(e.type==2) printf(\"%s\", e.value.s);\n";
+  output_string oc "                    if(j < v.value.arr.len - 1) printf(\", \");\n";
+  output_string oc "                }\n";
+  output_string oc "                printf(\"]\");\n";
+  output_string oc "                break; }\n";
   output_string oc "        }\n";
   output_string oc "        if (i > 1) printf(\" \");\n";
   output_string oc "    }\n";
@@ -167,6 +207,7 @@ let write_c_wrapper filename code functions globals =
         | Ast.TypeInt   -> "int64_t"
         | Ast.TypeFloat -> "double"
         | Ast.TypeVoid  -> "void"
+        | Ast.TypeArray (_, _) -> "Value"
       in
       Printf.sprintf "%s %s" t p.name
     ) params)
@@ -184,6 +225,7 @@ let write_c_wrapper filename code functions globals =
           | Ast.TypeInt   -> "int64_t"
           | Ast.TypeFloat -> "double"
           | Ast.TypeVoid  -> "void"
+          | Ast.TypeArray (_, _) -> "Value"
         in
         Printf.sprintf "%s arg_%s" t p.Ast.name
       ) params)
@@ -199,6 +241,7 @@ let write_c_wrapper filename code functions globals =
         Printf.fprintf oc "    Value %s_val = pop();\n" p.Ast.name;
         Printf.fprintf oc "    Value %s = %s_val;\n" p.Ast.name p.Ast.name
       | Ast.TypeVoid -> ()
+      | Ast.TypeArray _ -> Printf.fprintf oc "    Value %s = arg_%s;\n"  p.Ast.name p.Ast.name
     ) params;
 
     List.iter (compile_stmt_to_c oc) body;

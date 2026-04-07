@@ -6,7 +6,7 @@
 %token <float>  FLOAT
 %token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH
-%token          LPAREN RPAREN LBRACE RBRACE COMMA EQUALS
+%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS
 %token          NEWLINE EOF
 %token          FN VAR RETURN
 %token          TYPE_INT TYPE_FLOAT TYPE_VOID
@@ -32,10 +32,19 @@ stmt:
 def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
 
-types:
+type_scalar:
   | TYPE_INT   { TypeInt }
   | TYPE_FLOAT { TypeFloat }
-  | TYPE_VOID { TypeVoid }
+  | TYPE_VOID  { TypeVoid }
+
+types:
+  | t = type_scalar                       { t }
+  | LBRACKET n = INT RBRACKET ty = types  { TypeArray (n, ty) }
+
+array:
+  | LBRACKET n = INT RBRACKET t = type_scalar
+    LBRACE elems = separated_list(COMMA, expr) RBRACE
+    { Array (n, t, elems) }
 
 param:
   | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
@@ -68,3 +77,4 @@ expr:
   | LPAREN e = expr RPAREN                                        { e }
   | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
   | id = IDENT                                                    { Var id }
+  | a = array                                                 { a }

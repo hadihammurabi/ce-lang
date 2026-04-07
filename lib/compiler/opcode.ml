@@ -4,6 +4,7 @@ type opcode =
   | Push_int    of int
   | Push_float  of float
   | Push_string of string
+  | Push_array of int * Ast.types
 
   | Add
   | Sub
@@ -24,6 +25,7 @@ let to_string = function
   | Push_int n    -> Printf.sprintf "PUSH_INT    %d"    n
   | Push_float f  -> Printf.sprintf "PUSH_FLOAT  %g"    f
   | Push_string s -> Printf.sprintf "PUSH_STRING %S"    s
+  | Push_array (n, _) -> Printf.sprintf "PUSH_ARRAY  [%d]" n
   | Add           -> "ADD"
   | Sub           -> "SUB"
   | Mul           -> "MUL"
