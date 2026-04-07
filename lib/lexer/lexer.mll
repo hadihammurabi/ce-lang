@@ -24,6 +24,7 @@ rule tokenize = parse
   | "bool"             { TYPE_BOOL }     
   | "true"             { TRUE }     
   | "false"            { FALSE }     
+  | "string"              { TYPE_STRING }     
   | "int"              { TYPE_INT }     
   | "float"            { TYPE_FLOAT }   
   | "void"             { TYPE_VOID }   

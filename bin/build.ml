@@ -1,5 +1,6 @@
 open Ce_compiler
 open Ce_parser
+open Ce_lexer
 open Cmdliner
 
 let read file = In_channel.with_open_text file In_channel.input_all
@@ -29,7 +30,7 @@ let remove_extension filename =
 
 let compile code =
   try code |> parse |> Compiler.compile with
-  | Ce_lexer.Lexer.Lexer_error (msg, pos) ->
+  | Lexer.Lexer_error (msg, pos) ->
       Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;
       exit 1
   | Failure msg ->

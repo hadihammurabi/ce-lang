@@ -1,6 +1,7 @@
 type types =
   | TypeBool
   | TypeVoid
+  | TypeString
   | TypeInt
   | TypeFloat
   | TypeArray of int * types
@@ -28,6 +29,15 @@ type expr =
   | Call of string * expr list
   | Var of string
   | Array of int * types * expr list
+  (* if   cond,  block,      elif cond,  block,            block) *)
+  | If of expr * stmt list * (expr * stmt list) list * stmt list option
+
+and stmt =
+  | Expr of expr
+  | DefFN of string * param list * types * stmt list
+  | DefVar of string * types * expr
+  | Return of expr
+  | Block of stmt list
 
 let rec to_string = function
   | String s -> s
@@ -52,15 +62,7 @@ let rec to_string = function
   | Array (n, t, elems) ->
       Printf.sprintf "[%d]%s{%s}" n (show_types t)
         (String.concat ", " (List.map to_string elems))
-
-type stmt =
-  | Expr of expr
-  | DefFN of string * param list * types * stmt list
-  | DefVar of string * types * expr
-  | Return of expr
-  | Block of stmt list
-  (* if   cond,  block,      elif cond,  block,            block) *)
-  | If of expr * stmt list * (expr * stmt list) list * stmt list option
+  | If (cond, _, _, _) -> Printf.sprintf "if(%s)" (to_string cond)
 
 let exec = function
   | Expr _ -> ()
@@ -68,4 +70,3 @@ let exec = function
   | DefVar (name, ty, value) -> ()
   | Return _ -> ()
   | Block _ -> ()
-  | If _ -> ()

@@ -9,7 +9,7 @@
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS
 %token          EOF FN VAR RETURN
 %token          TYPE_BOOL TRUE FALSE
-%token          TYPE_VOID TYPE_INT TYPE_FLOAT
+%token          TYPE_VOID TYPE_STRING TYPE_INT TYPE_FLOAT
 %token          IF ELSE
 
 %left OR AND
@@ -31,7 +31,6 @@ stmt:
   | RETURN expr     { Return $2 }
   | block           { Block $1 }
   | expr            { Expr $1 }
-  | stmt_if { $1 }
 
 block:
   | LBRACE body = stmt_list RBRACE { body }
@@ -55,10 +54,11 @@ def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
 
 type_scalar:
+  | TYPE_VOID  { TypeVoid }
+  | TYPE_STRING{ TypeString }
+  | TYPE_BOOL  { TypeBool }
   | TYPE_INT   { TypeInt }
   | TYPE_FLOAT { TypeFloat }
-  | TYPE_VOID  { TypeVoid }
-  | TYPE_BOOL  { TypeBool }
 
 types:
   | t = type_scalar                       { t }
@@ -101,4 +101,5 @@ expr:
   | l = expr GTE   r = expr       { Gte (l, r) }
   | l = expr AND   r = expr       { And (l, r) }
   | l = expr OR    r = expr       { Or (l, r) }
+  | stmt_if { $1 }
   

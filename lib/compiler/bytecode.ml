@@ -163,20 +163,6 @@ let rec compile_expr_to_c oc = function
       Printf.fprintf oc "        stack[sp].value.arr.len  = __arr_size;\n";
       Printf.fprintf oc "        sp++;\n";
       Printf.fprintf oc "    }\n"
-
-let rec compile_stmt_to_c oc = function
-  | Ast.Expr e -> compile_expr_to_c oc e
-  | Ast.DefVar (name, _ty, expr) ->
-      compile_expr_to_c oc expr;
-      Printf.fprintf oc "    Value %s = pop();\n" name
-  | Ast.DefFN _ -> ()
-  | Ast.Return e ->
-      compile_expr_to_c oc e;
-      Printf.fprintf oc "    return;\n"
-  | Ast.Block body ->
-      output_string oc "    {\n";
-      List.iter (compile_stmt_to_c oc) body;
-      output_string oc "    }\n"
   | Ast.If (cond, then_body, elif_branches, else_body) ->
       output_string oc "    {\n";
       compile_expr_to_c oc cond;
@@ -210,6 +196,20 @@ let rec compile_stmt_to_c oc = function
           output_string oc "    }\n"
       | None -> ());
       List.iter (fun _ -> output_string oc "    }\n") elif_branches;
+      output_string oc "    }\n"
+
+and compile_stmt_to_c oc = function
+  | Ast.Expr e -> compile_expr_to_c oc e
+  | Ast.DefVar (name, _ty, expr) ->
+      compile_expr_to_c oc expr;
+      Printf.fprintf oc "    Value %s = pop();\n" name
+  | Ast.DefFN _ -> ()
+  | Ast.Return e ->
+      compile_expr_to_c oc e;
+      Printf.fprintf oc "    return;\n"
+  | Ast.Block body ->
+      output_string oc "    {\n";
+      List.iter (compile_stmt_to_c oc) body;
       output_string oc "    }\n"
 
 let write_c_wrapper filename code functions globals =

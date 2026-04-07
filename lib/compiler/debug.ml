@@ -14,6 +14,7 @@ let dump (code : opcode array) (functions : (string * types * stmt list) list) =
           | TypeInt -> "int"
           | TypeFloat -> "float"
           | TypeVoid -> "void"
+          | TypeString -> "string"
           | TypeBool -> "bool"
           | TypeArray (length, ty) ->
               Printf.sprintf "[%d]%s" length (show_types ty)

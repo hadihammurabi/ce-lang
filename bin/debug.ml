@@ -4,7 +4,8 @@ open Cmdliner
 let execute file bytecode =
   let prog = file |> Build.read |> Build.compile in
   let base_name =
-    try String.sub file 0 (String.rindex file '.') with Not_found -> file in
+    try String.sub file 0 (String.rindex file '.') with Not_found -> file
+  in
   let c_file = base_name ^ ".c" in
   Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals;
 

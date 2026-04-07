@@ -74,8 +74,19 @@ let rec compile_expr ctx = function
   | Ast.Array (n, ty, elems) ->
       List.iter (compile_expr ctx) elems;
       emit ctx (Push_array (n, ty))
+  | Ast.If (cond, then_body, elif_branches, else_body) -> (
+      compile_expr ctx cond;
+      List.iter (compile_stmt ctx) then_body;
+      List.iter
+        (fun (econd, ebody) ->
+          compile_expr ctx econd;
+          List.iter (compile_stmt ctx) ebody)
+        elif_branches;
+      match else_body with
+      | Some stmts -> List.iter (compile_stmt ctx) stmts
+      | None -> ())
 
-let rec compile_stmt ctx = function
+and compile_stmt ctx = function
   | Ast.Expr (Call (fn, args) as e) ->
       compile_expr ctx (Call (fn, args));
       ignore e
@@ -92,17 +103,6 @@ let rec compile_stmt ctx = function
       compile_expr ctx e;
       emit ctx Return
   | Ast.Block body -> List.iter (compile_stmt ctx) body
-  | Ast.If (cond, then_body, elif_branches, else_body) -> (
-      compile_expr ctx cond;
-      List.iter (compile_stmt ctx) then_body;
-      List.iter
-        (fun (econd, ebody) ->
-          compile_expr ctx econd;
-          List.iter (compile_stmt ctx) ebody)
-        elif_branches;
-      match else_body with
-      | Some stmts -> List.iter (compile_stmt ctx) stmts
-      | None -> ())
 
 let compile (stmts : Ast.stmt list) : program =
   let ctx = make_ctx () in
