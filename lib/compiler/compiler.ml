@@ -96,8 +96,13 @@ and compile_stmt ctx = function
       emit ctx Pop
   | Ast.DefFN (name, params, ty, body) ->
       emit ctx (DefFN (name, params));
-      List.iter (fun p -> Hashtbl.add ctx.env p.Ast.name false) params; 
-      register_function ctx name params ty body
+      register_function ctx name params ty body;
+
+      let previous_env = Hashtbl.copy ctx.env in
+      List.iter (fun p -> Hashtbl.add ctx.env p.Ast.name false) params;
+      List.iter (compile_stmt ctx) body;
+      Hashtbl.clear ctx.env;
+      Hashtbl.iter (fun k v -> Hashtbl.add ctx.env k v) previous_env
   | Ast.DefLet (name, ismut, ty, value) ->
       compile_expr ctx value;
       Hashtbl.add ctx.env name ismut;
