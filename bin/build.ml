@@ -92,34 +92,46 @@ let namespace_ast prefix stmts =
   ) stmts;
   List.map (prefix_stmt exports prefix) stmts
 
-(* Update the parse_file function we made previously to trigger namespacing *)
 let rec parse_file visited filepath =
-  let abs_path = if Filename.is_relative filepath then filepath else filepath in
-  
+  let abs_path = filepath in
   if Hashtbl.mem visited abs_path then []
   else begin
     Hashtbl.add visited abs_path true;
     let src = read abs_path in
-    let lexbuf = Lexing.from_string src in
-    let ast = 
-      try Parser.prog Lexer.tokenize lexbuf
-      with Parser.Error ->
-        let pos = lexbuf.lex_curr_p in
-        raise (Failure (Printf.sprintf "Parse error in %s at line %d, column %d" 
-          abs_path pos.pos_lnum (pos.pos_cnum - pos.pos_bol)))
-    in
+    let ast = parse src in
     
-    let dir = Filename.dirname abs_path in
+    let current_dir = Filename.dirname abs_path in
     
+    let search_paths = [
+      current_dir;
+      "/usr/lib/ce/std";
+      Sys.getenv "CE_STD_PATH"
+    ] in
+
     List.concat_map (fun stmt ->
       match stmt with
       | Ce_parser.Ast.Import path_parts ->
           let relative_target = path_of_module_path path_parts in
-          let target_file = Filename.concat dir relative_target in
-          let imported_ast = parse_file visited target_file in
-          (* Calculate prefix (e.g. "math." or "http.client.") and apply it *)
-          let prefix = String.concat "." path_parts ^ "." in
+          let target_file = 
+            try 
+              List.find_map (fun base ->
+                let full_path = Filename.concat base relative_target in
+                if Sys.file_exists full_path then Some full_path else None
+              ) search_paths
+            with Not_found -> 
+              failwith (Printf.sprintf "Module %s not found in search paths" 
+                         (String.concat "." path_parts))
+          in
+
+          let target_file_path = match target_file with 
+            | Some p -> p 
+            | None -> failwith "Module not found" in
+
+          let imported_ast = parse_file visited target_file_path in
+          let last_module_name = List.hd (List.rev path_parts) in
+          let prefix = last_module_name ^ "." in
           namespace_ast prefix imported_ast
+          
       | other_stmt -> [other_stmt]
     ) ast
   end
