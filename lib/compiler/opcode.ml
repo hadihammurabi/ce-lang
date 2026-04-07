@@ -10,6 +10,7 @@ type opcode =
   | Sub
   | Mul
   | Div
+  | Mod
   | Eq
   | Lt
   | Lte
@@ -39,6 +40,7 @@ let to_string = function
   | Sub -> "SUB"
   | Mul -> "MUL"
   | Div -> "DIV"
+  | Mod -> "MOD"
   | Gt -> "GT"
   | Gte -> "GTE"
   | Eq -> "EQ"
@@ -48,7 +50,7 @@ let to_string = function
   | Or -> "OR"
   | Neg -> "NEG"
   | Return -> "RETURN"
-  | DefLet ( name, _ ) -> Printf.sprintf "DEF_LET     %s" name
+  | DefLet (name, _) -> Printf.sprintf "DEF_LET     %s" name
   | Let name -> Printf.sprintf "LOAD_LET    %s" name
   | Assign name -> Printf.sprintf "ASSIGN    %s" name
   | DefFN (name, _) -> Printf.sprintf "DEF_FN      %s" name

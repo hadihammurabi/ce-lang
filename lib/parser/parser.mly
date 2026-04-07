@@ -5,7 +5,7 @@
 %token <int>    INT
 %token <float>  FLOAT
 %token <string> STRING IDENT
-%token          PLUS MINUS STAR SLASH EQEQ LT LTE GT GTE AND OR
+%token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT
 %token          EOF RETURN IMPORT BREAK
 %token          TYPE_BOOL TRUE FALSE
@@ -15,7 +15,7 @@
 %left OR AND
 %left EQEQ LT LTE GT GTE
 %left PLUS MINUS
-%left STAR SLASH
+%left STAR SLASH MOD
 %nonassoc UMINUS
 
 %start <Ast.stmt list> prog
@@ -107,6 +107,7 @@ expr:
   | l = expr MINUS r = expr       { Sub (l, r) }
   | l = expr STAR  r = expr       { Mul (l, r) }
   | l = expr SLASH r = expr       { Div (l, r) }
+  | l = expr MOD   r = expr       { Mod (l, r) }
   | l = expr EQEQ  r = expr       { Eq (l, r) }
   | l = expr LT    r = expr       { Lt (l, r) }
   | l = expr LTE   r = expr       { Lte (l, r) }

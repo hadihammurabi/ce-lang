@@ -40,6 +40,7 @@ rule tokenize = parse
   | '-'                { MINUS }
   | '*'                { STAR }
   | '/'                { SLASH }
+  | '%'                { MOD }
   | '('                { LPAREN }
   | ')'                { RPAREN }
   | '{'                { LBRACE }

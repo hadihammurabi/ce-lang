@@ -9,7 +9,9 @@ type ctx = {
   env : (string, bool) Hashtbl.t;
 }
 
-let make_ctx () = { code = []; functions = []; globals = []; env = Hashtbl.create 16; }
+let make_ctx () =
+  { code = []; functions = []; globals = []; env = Hashtbl.create 16 }
+
 let emit ctx op = ctx.code <- op :: ctx.code
 let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 
@@ -36,6 +38,10 @@ let rec compile_expr ctx = function
       compile_expr ctx l;
       compile_expr ctx r;
       emit ctx Div
+  | Ast.Mod (l, r) ->
+      compile_expr ctx l;
+      compile_expr ctx r;
+      emit ctx Mod
   | Ast.Eq (l, r) ->
       compile_expr ctx l;
       compile_expr ctx r;
@@ -110,11 +116,14 @@ and compile_stmt ctx = function
       ctx.globals <- (name, ismut, ty, value) :: ctx.globals
   | Ast.Assign (name, expr) ->
       (match Hashtbl.find_opt ctx.env name with
-       | None -> 
-           failwith (Printf.sprintf "Variable '%s' is not defined" name)
-       | Some false -> 
-           failwith (Printf.sprintf "Cannot assign to immutable variable '%s'. Use 'let mut' instead." name)
-       | Some true -> ());
+      | None -> failwith (Printf.sprintf "Variable '%s' is not defined" name)
+      | Some false ->
+          failwith
+            (Printf.sprintf
+               "Cannot assign to immutable variable '%s'. Use 'let mut' \
+                instead."
+               name)
+      | Some true -> ());
       compile_expr ctx expr;
       emit ctx (Assign name)
   | Ast.Return e ->
@@ -145,4 +154,3 @@ let compile_expr_to_program (expr : Ast.expr) : Opcode.program =
     functions = ctx.functions;
     globals = List.rev ctx.globals;
   }
-

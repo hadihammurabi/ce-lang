@@ -18,6 +18,7 @@ type expr =
   | Sub of expr * expr
   | Mul of expr * expr
   | Div of expr * expr
+  | Mod of expr * expr
   | Eq of expr * expr
   | Lt of expr * expr
   | Lte of expr * expr
@@ -53,6 +54,7 @@ let rec to_string = function
   | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r)
   | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r)
   | Div (l, r) -> Printf.sprintf "(%s / %s)" (to_string l) (to_string r)
+  | Mod (l, r) -> Printf.sprintf "(%s %% %s)" (to_string l) (to_string r)
   | Eq (l, r) -> Printf.sprintf "(%s == %s)" (to_string l) (to_string r)
   | Lt (l, r) -> Printf.sprintf "(%s < %s)" (to_string l) (to_string r)
   | Lte (l, r) -> Printf.sprintf "(%s <= %s)" (to_string l) (to_string r)

@@ -1,6 +1,7 @@
 open Ce_parser
 
 let c_safe name = String.map (fun c -> if c = '.' then '_' else c) name
+
 let rec compile_expr_to_c oc = function
   | Ast.Int n -> Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
   | Ast.Float f -> Printf.fprintf oc "    push_float(%.17g);\n" f
@@ -51,6 +52,12 @@ let rec compile_expr_to_c oc = function
       output_string oc
         "             double rf = (r.type == 0) ? r.value.i : r.value.f;\n";
       output_string oc "             push_float(lf / rf); } }\n"
+  | Ast.Mod (l, r) ->
+      compile_expr_to_c oc l;
+      compile_expr_to_c oc r;
+      output_string oc "    { Value r = pop(); Value l = pop();\n";
+      output_string oc "      if(l.type == 0 && r.type == 0) push_int(l.value.i % r.value.i);\n";
+      output_string oc "      else { /* Handle float modulo if needed */ } }\n" (* *)
   | Ast.Eq (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
@@ -140,7 +147,9 @@ let rec compile_expr_to_c oc = function
       | "print" -> Printf.fprintf oc "    builtin_print(%d);\n" argc
       | _ ->
           output_string oc "    {\n";
-          let arg_names = List.mapi (fun i _ -> Printf.sprintf "__arg%d" i) args in
+          let arg_names =
+            List.mapi (fun i _ -> Printf.sprintf "__arg%d" i) args
+          in
           List.iter
             (fun aname -> Printf.fprintf oc "        Value %s = pop();\n" aname)
             (List.rev arg_names);
@@ -148,8 +157,8 @@ let rec compile_expr_to_c oc = function
           Printf.fprintf oc "        %s(%s);\n" (c_safe name) call_args;
           output_string oc "    }\n")
   | Ast.Let name ->
-    Printf.fprintf oc "    stack[sp] = %s;\n" (c_safe name);
-    Printf.fprintf oc "    sp++;\n"
+      Printf.fprintf oc "    stack[sp] = %s;\n" (c_safe name);
+      Printf.fprintf oc "    sp++;\n"
   | Ast.Array (n, ty, elems) ->
       List.iter (compile_expr_to_c oc) elems;
       List.iter (compile_expr_to_c oc) elems;
@@ -339,13 +348,14 @@ let write_c_wrapper filename code functions globals =
   output_string oc "}\n\n";
 
   List.iter
-    (fun (name, ismut, _ty, _expr) -> Printf.fprintf oc "Value %s;\n" (c_safe name))
+    (fun (name, ismut, _ty, _expr) ->
+      Printf.fprintf oc "Value %s;\n" (c_safe name))
     globals;
   output_string oc "\n";
 
   List.iter
     (fun (fname, params, _ty, _body) ->
-      let fn_name = if fname = "main" then "fn_main" else (c_safe fname) in
+      let fn_name = if fname = "main" then "fn_main" else c_safe fname in
       let param_str =
         if params = [] then "void"
         else
@@ -358,7 +368,7 @@ let write_c_wrapper filename code functions globals =
 
   List.iter
     (fun (fname, params, _ty, body) ->
-      let fn_name = if fname = "main" then "fn_main" else (c_safe fname) in
+      let fn_name = if fname = "main" then "fn_main" else c_safe fname in
       let param_str =
         if params = [] then "void"
         else
@@ -377,7 +387,7 @@ let write_c_wrapper filename code functions globals =
       Printf.fprintf oc "    sp = 0;\n";
       compile_expr_to_c oc expr;
       Printf.fprintf oc "    *(Value*)&%s = pop();\n\n" (c_safe name))
-  globals;
+    globals;
 
   output_string oc "    fn_main();\n";
   output_string oc "    return 0;\n";

@@ -5,17 +5,16 @@ open Cmdliner
 let execute file bytecode =
   let visited = Hashtbl.create 10 in
   let ast = Build.parse_file visited file in
-  let base_name = String.sub file 0 (String.rindex file '.')
-  in
+  let base_name = String.sub file 0 (String.rindex file '.') in
   let c_file = base_name ^ ".c" in
-  let _ = 
+  let _ =
     try
       let prog = Compiler.compile ast in
-      Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals;
-    with Failure msg -> 
+      Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals
+    with Failure msg ->
       Printf.printf "Error: %s\n" msg;
       exit 1
-    in
+  in
   c_file |> Build.read |> print_endline;
   Linker.cleanup_temp c_file
 
