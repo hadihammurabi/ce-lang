@@ -87,6 +87,17 @@ let rec compile_stmt ctx = function
   | Ast.Block body -> 
       List.iter (compile_stmt ctx) body
 
+  | Ast.If (cond, then_body, elif_branches, else_body) ->
+    compile_expr ctx cond;
+    List.iter (compile_stmt ctx) then_body;
+    List.iter (fun (econd, ebody) ->
+      compile_expr ctx econd;
+      List.iter (compile_stmt ctx) ebody
+    ) elif_branches;
+    (match else_body with
+    | Some stmts -> List.iter (compile_stmt ctx) stmts
+    | None -> ())
+
 let compile (stmts : Ast.stmt list) : program =
   let ctx = make_ctx () in
   List.iter (compile_stmt ctx) stmts;

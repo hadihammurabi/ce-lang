@@ -63,9 +63,13 @@ type stmt =
   | Return of expr
   | Block of stmt list
 
+  (* if   cond,  block,      elif cond,  block,            block) *)
+  | If of expr * stmt list * (expr * stmt list) list * stmt list option
+
 let exec = function
   | Expr _ -> ()
   | DefFN (name, params, ty, _body) -> ()
   | DefVar (name, ty, value) -> ()
   | Return _ -> ()
   | Block _ -> ()
+  | If _ -> ()

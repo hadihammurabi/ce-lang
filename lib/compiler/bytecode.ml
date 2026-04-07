@@ -140,6 +140,35 @@ let rec compile_stmt_to_c oc = function
     output_string oc "    {\n";
     List.iter (compile_stmt_to_c oc) body;
     output_string oc "    }\n"
+  | Ast.If (cond, then_body, elif_branches, else_body) ->
+    output_string oc "    {\n";
+    compile_expr_to_c oc cond;
+    output_string oc "    Value __cond = pop();\n";
+    output_string oc "    int __cv = (__cond.type == 0) ? (__cond.value.i != 0)\n";
+    output_string oc "             : (__cond.type == 4) ? (__cond.value.i != 0)\n";
+    output_string oc "             : (__cond.value.f != 0.0);\n";
+    output_string oc "    if (__cv) {\n";
+    List.iter (compile_stmt_to_c oc) then_body;
+    output_string oc "    }\n";
+    List.iter (fun (econd, ebody) ->
+      output_string oc "    else {\n";
+      compile_expr_to_c oc econd;
+      output_string oc "    Value __cond = pop();\n";
+      output_string oc "    int __cv = (__cond.type == 0) ? (__cond.value.i != 0)\n";
+      output_string oc "             : (__cond.type == 4) ? (__cond.value.i != 0)\n";
+      output_string oc "             : (__cond.value.f != 0.0);\n";
+      output_string oc "    if (__cv) {\n";
+      List.iter (compile_stmt_to_c oc) ebody;
+      output_string oc "    }\n"
+    ) elif_branches;
+    (match else_body with
+    | Some stmts ->
+      output_string oc "    else {\n";
+      List.iter (compile_stmt_to_c oc) stmts;
+      output_string oc "    }\n"
+    | None -> ());
+    List.iter (fun _ -> output_string oc "    }\n") elif_branches;
+    output_string oc "    }\n"
 
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in

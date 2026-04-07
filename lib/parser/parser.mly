@@ -10,6 +10,7 @@
 %token          EOF FN VAR RETURN
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_INT TYPE_FLOAT
+%token          IF ELSE
 
 %left OR AND
 %left EQEQ LT LTE GT GTE
@@ -30,9 +31,22 @@ stmt:
   | RETURN expr     { Return $2 }
   | block           { Block $1 }
   | expr            { Expr $1 }
+  | stmt_if { $1 }
 
 block:
   | LBRACE body = stmt_list RBRACE { body }
+
+stmt_if:
+  | IF e = expr body = block elif_branches = stmt_if_elif else_body = stmt_if_else
+    { If (e, body, elif_branches, else_body) }
+
+stmt_if_elif:
+  |                                                   { [] }
+  | ELSE IF e = expr body = block rest = stmt_if_elif  { (e, body) :: rest }
+
+stmt_if_else:
+  |                    { None }
+  | ELSE body = block  { Some body }
 
 stmt_list:
   | { [] }
