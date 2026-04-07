@@ -25,6 +25,7 @@ type opcode =
   | Call of string * int
   | LoadParam of string
   | Pop
+  | Break
   | Halt
 
 let to_string = function
@@ -52,6 +53,7 @@ let to_string = function
   | Call (f, n) -> Printf.sprintf "CALL        %s/%d" f n
   | LoadParam name -> Printf.sprintf "LOAD_PARAM  %s" name
   | Pop -> "POP"
+  | Break -> "BREAK"
   | Halt -> "HALT"
 
 type program = {

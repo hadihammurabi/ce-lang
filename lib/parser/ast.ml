@@ -38,6 +38,8 @@ and stmt =
   | DefVar of string * types * expr
   | Return of expr
   | Block of stmt list
+  | For of stmt list
+  | Break
 
 let rec to_string = function
   | String s -> s
@@ -70,3 +72,5 @@ let exec = function
   | DefVar (name, ty, value) -> ()
   | Return _ -> ()
   | Block _ -> ()
+  | For _ -> ()
+  | Break -> ()

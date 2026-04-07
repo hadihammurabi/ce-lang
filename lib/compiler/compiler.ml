@@ -103,6 +103,8 @@ and compile_stmt ctx = function
       compile_expr ctx e;
       emit ctx Return
   | Ast.Block body -> List.iter (compile_stmt ctx) body
+  | Ast.For body -> List.iter (compile_stmt ctx) body
+  | Ast.Break -> emit ctx Break
 
 let compile (stmts : Ast.stmt list) : program =
   let ctx = make_ctx () in

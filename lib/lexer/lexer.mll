@@ -20,6 +20,8 @@ rule tokenize = parse
   | "var"              { VAR }          
   | "if"               { IF }
   | "else"             { ELSE }
+  | "for"               { FOR }
+  | "break"             { BREAK }
   | "return"           { RETURN }
   | "bool"             { TYPE_BOOL }     
   | "true"             { TRUE }     

@@ -56,7 +56,9 @@ let rec compile_expr_to_c oc = function
       output_string oc "    { Value r = pop(); Value l = pop();\n";
       output_string oc
         "      if(l.type == 0 && r.type == 0) push_bool(l.value.i == r.value.i);\n";
-      output_string oc "      else if(l.type == 2 && r.type == 2) push_bool(strcmp(l.value.s, r.value.s) == 0);\n";
+      output_string oc
+        "      else if(l.type == 2 && r.type == 2) push_bool(strcmp(l.value.s, \
+         r.value.s) == 0);\n";
       output_string oc
         "      else { double lf = (l.type == 0) ? l.value.i : l.value.f;\n";
       output_string oc
@@ -212,6 +214,11 @@ and compile_stmt_to_c oc = function
       output_string oc "    {\n";
       List.iter (compile_stmt_to_c oc) body;
       output_string oc "    }\n"
+  | Ast.For body ->
+      output_string oc "    while(1) {\n";
+      List.iter (compile_stmt_to_c oc) body;
+      output_string oc "    }\n"
+  | Ast.Break -> output_string oc "    break;\n"
 
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in

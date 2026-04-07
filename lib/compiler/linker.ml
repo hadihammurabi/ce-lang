@@ -1,4 +1,4 @@
-let compilers = ["gcc"; "clang"; "cc"]
+let compilers = [ "gcc"; "clang"; "cc" ]
 
 let find_compiler () =
   let check cmd =
@@ -7,7 +7,7 @@ let find_compiler () =
   in
   try List.find check compilers
   with Not_found ->
-    Printf.eprintf "Error: No C compiler found (checked: %s)\n" 
+    Printf.eprintf "Error: No C compiler found (checked: %s)\n"
       (String.concat ", " compilers);
     exit 1
 

@@ -10,7 +10,7 @@
 %token          EOF FN VAR RETURN
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_INT TYPE_FLOAT
-%token          IF ELSE
+%token          IF ELSE FOR BREAK
 
 %left OR AND
 %left EQEQ LT LTE GT GTE
@@ -29,8 +29,10 @@ stmt:
   | def_fn          { $1 }
   | def_var         { $1 }
   | RETURN expr     { Return $2 }
+  | BREAK           { Break }
   | block           { Block $1 }
   | expr            { Expr $1 }
+  | FOR body = block { For body }
 
 block:
   | LBRACE body = stmt_list RBRACE { body }
