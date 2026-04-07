@@ -18,61 +18,62 @@ let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 let register_function ctx name params ty body =
   ctx.functions <- (name, params, ty, body) :: ctx.functions
 
-let rec compile_expr ctx = function
+let rec compile_expr ctx (e : Ast.expr) = match e.kind with
+  | Ast.Void -> ()
   | Ast.Int n -> emit ctx (Push_int n)
   | Ast.Float f -> emit ctx (Push_float f)
   | Ast.String s -> emit ctx (Push_string s)
   | Ast.Bool b -> emit ctx (Push_bool b)
   | Ast.Add (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Add
   | Ast.Sub (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Sub
   | Ast.Mul (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Mul
   | Ast.Div (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Div
   | Ast.Mod (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Mod
   | Ast.Eq (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Eq
   | Ast.Lt (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Lt
   | Ast.Gt (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Gt
   | Ast.Lte (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Lte
   | Ast.Gte (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Gte
   | Ast.And (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx And
   | Ast.Or (l, r) ->
-      compile_expr ctx l.kind;
-      compile_expr ctx r.kind;
+      compile_expr ctx l;
+      compile_expr ctx r;
       emit ctx Or
   | Ast.Neg e ->
-      compile_expr ctx e.kind;
+      compile_expr ctx e;
       emit ctx Neg
   | Ast.Call (fn, args) ->
       List.iter (compile_expr ctx) args;
@@ -94,8 +95,8 @@ let rec compile_expr ctx = function
       | None -> ())
 
 and compile_stmt ctx = function
-  | Ast.Expr (Call (fn, args) as e) ->
-      compile_expr ctx (Call (fn, args));
+  | Ast.Expr ({ kind = Ast.Call (fn, args); _ } as e) ->
+      compile_expr ctx e;
       ignore e
   | Ast.Expr e ->
       compile_expr ctx e;

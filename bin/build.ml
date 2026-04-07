@@ -37,59 +37,61 @@ let path_of_module_path parts =
   in
   build_path parts
 
-let rec prefix_expr exports prefix = function
-  | Ce_parser.Ast.Add (l, r) ->
-      Ce_parser.Ast.Add
+let rec prefix_expr exports prefix (e: Ast.expr): Ast.expr =
+  let kind = match e.kind with
+  | Ast.Add (l, r) ->
+      Ast.Add
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Sub (l, r) ->
-      Ce_parser.Ast.Sub
+  | Ast.Sub (l, r) ->
+      Ast.Sub
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Mul (l, r) ->
-      Ce_parser.Ast.Mul
+  | Ast.Mul (l, r) ->
+      Ast.Mul
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Div (l, r) ->
-      Ce_parser.Ast.Div
+  | Ast.Div (l, r) ->
+      Ast.Div
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Eq (l, r) ->
-      Ce_parser.Ast.Eq
+  | Ast.Eq (l, r) ->
+      Ast.Eq
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Lt (l, r) ->
-      Ce_parser.Ast.Lt
+  | Ast.Lt (l, r) ->
+      Ast.Lt
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Lte (l, r) ->
-      Ce_parser.Ast.Lte
+  | Ast.Lte (l, r) ->
+      Ast.Lte
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Gt (l, r) ->
-      Ce_parser.Ast.Gt
+  | Ast.Gt (l, r) ->
+      Ast.Gt
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Gte (l, r) ->
-      Ce_parser.Ast.Gte
+  | Ast.Gte (l, r) ->
+      Ast.Gte
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.And (l, r) ->
-      Ce_parser.Ast.And
+  | Ast.And (l, r) ->
+      Ast.And
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Or (l, r) ->
-      Ce_parser.Ast.Or
+  | Ast.Or (l, r) ->
+      Ast.Or
         (prefix_expr exports prefix l, prefix_expr exports prefix r)
-  | Ce_parser.Ast.Neg e -> Ce_parser.Ast.Neg (prefix_expr exports prefix e)
-  | Ce_parser.Ast.Call (name, args) ->
+  | Ast.Neg e -> Ast.Neg (prefix_expr exports prefix e)
+  | Ast.Call (name, args) ->
       let new_name = if Hashtbl.mem exports name then prefix ^ name else name in
-      Ce_parser.Ast.Call (new_name, List.map (prefix_expr exports prefix) args)
-  | Ce_parser.Ast.Let name ->
+      Ast.Call (new_name, List.map (prefix_expr exports prefix) args)
+  | Ast.Let name ->
       let new_name = if Hashtbl.mem exports name then prefix ^ name else name in
-      Ce_parser.Ast.Let new_name
-  | Ce_parser.Ast.Array (n, ty, elems) ->
-      Ce_parser.Ast.Array (n, ty, List.map (prefix_expr exports prefix) elems)
-  | Ce_parser.Ast.If (cond, then_body, elifs, else_body) ->
+      Ast.Let new_name
+  | Ast.Array (n, ty, elems) ->
+      Ast.Array (n, ty, List.map (prefix_expr exports prefix) elems)
+  | Ast.If (cond, then_body, elifs, else_body) ->
       let p_stmt = prefix_stmt exports prefix in
-      Ce_parser.Ast.If
+      Ast.If
         ( prefix_expr exports prefix cond,
           List.map p_stmt then_body,
           List.map
             (fun (c, b) -> (prefix_expr exports prefix c, List.map p_stmt b))
             elifs,
           Option.map (List.map p_stmt) else_body )
-  | e -> e
+  | e -> e in
+  { e with kind = kind }
 
 and prefix_stmt exports prefix = function
   | Ce_parser.Ast.Expr e -> Ce_parser.Ast.Expr (prefix_expr exports prefix e)

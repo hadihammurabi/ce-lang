@@ -1,7 +1,5 @@
 %{
   open Ast
-
-  let expr ty kind = {ty; kind}
 %}
 
 %token <int>    INT
@@ -44,7 +42,7 @@ block:
 stmt_if:
   | IF e = expr body = block tail = stmt_if_tail
     { let (elif_branches, else_body) = tail in 
-      expr TypeUnknown( If (e, body, elif_branches, else_body) ) }
+      Astype.unknown( If (e, body, elif_branches, else_body) ) }
 
 stmt_if_tail:
   | { ([], None) }
@@ -74,7 +72,7 @@ types:
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
     LBRACE elems = separated_list(COMMA, expr) RBRACE
-    { expr TypeUnknown( Array (n, t, elems) ) }
+    { Astype.unknown( Array (n, t, elems) ) }
 
 param:
   | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
@@ -94,28 +92,28 @@ path:
 expr_simple:
   | a = array                                                     { a }
   | LPAREN e = expr RPAREN                                        { e }
-  | TRUE                                                          { expr TypeBool( Bool true ) }
-  | FALSE                                                         { expr TypeBool( Bool false ) }
-  | n = INT                                                       { expr TypeInt(Int n) }
-  | f = FLOAT                                                     { expr TypeFloat( Float f ) }
-  | s = STRING                                                    { expr TypeString( String s ) }
-  | id = path                                                     { expr TypeUnknown( Let id ) }
-  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { expr TypeUnknown( Call (id, args) ) }
-  | MINUS e = expr %prec UMINUS                                   { expr TypeInt( Neg e ) }
+  | TRUE                                                          { Astype.bool(true) }
+  | FALSE                                                         { Astype.bool(false) }
+  | n = INT                                                       { Astype.int(n) }
+  | f = FLOAT                                                     { Astype.float(f) }
+  | s = STRING                                                    { Astype.string(s) }
+  | id = path                                                     { Astype.unknown(Let id) }
+  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Astype.unknown(Call(id, args)) }
+  | MINUS e = expr %prec UMINUS                                   { Astype.unknown( Neg e ) }
 
 expr:
   | e = expr_simple               { e }
-  | l = expr PLUS  r = expr       { expr TypeUnknown(Add (l, r) )}
-  | l = expr MINUS r = expr       { expr TypeUnknown(Sub (l, r) )}
-  | l = expr STAR  r = expr       { expr TypeUnknown(Mul (l, r) )}
-  | l = expr SLASH r = expr       { expr TypeUnknown(Div (l, r) )}
-  | l = expr MOD   r = expr       { expr TypeUnknown(Mod (l, r) )}
-  | l = expr EQEQ  r = expr       { expr TypeUnknown(Eq (l, r)  )}
-  | l = expr LT    r = expr       { expr TypeUnknown(Lt (l, r)  )}
-  | l = expr LTE   r = expr       { expr TypeUnknown(Lte (l, r) )}
-  | l = expr GT    r = expr       { expr TypeUnknown(Gt (l, r)  )}
-  | l = expr GTE   r = expr       { expr TypeUnknown(Gte (l, r) )}
-  | l = expr AND   r = expr       { expr TypeUnknown(And (l, r) )}
-  | l = expr OR    r = expr       { expr TypeUnknown(Or (l, r)  )}
+  | l = expr PLUS  r = expr       { Astype.unknown (Add (l, r)) }
+  | l = expr MINUS r = expr       { Astype.unknown (Sub (l, r)) }
+  | l = expr STAR  r = expr       { Astype.unknown (Mul (l, r)) }
+  | l = expr SLASH r = expr       { Astype.unknown (Div (l, r)) }
+  | l = expr MOD   r = expr       { Astype.unknown (Mod (l, r)) }
+  | l = expr EQEQ  r = expr       { Astype.unknown (Eq (l, r)) }
+  | l = expr LT    r = expr       { Astype.unknown (Lt (l, r)) }
+  | l = expr LTE   r = expr       { Astype.unknown (Lte (l, r)) }
+  | l = expr GT    r = expr       { Astype.unknown (Gt (l, r)) }
+  | l = expr GTE   r = expr       { Astype.unknown (Gte (l, r)) }
+  | l = expr AND   r = expr       { Astype.unknown (And (l, r)) }
+  | l = expr OR    r = expr       { Astype.unknown (Or (l, r)) }
   | stmt_if { $1 }
   

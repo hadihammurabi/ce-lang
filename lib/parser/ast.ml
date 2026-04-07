@@ -14,6 +14,7 @@ type expr = {
 }
 
 and expr_kind =
+  | Void
   | String of string
   | Bool of bool
   | Int of int

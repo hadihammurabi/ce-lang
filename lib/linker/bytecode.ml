@@ -2,7 +2,8 @@ open Ce_parser
 
 let c_safe name = String.map (fun c -> if c = '.' then '_' else c) name
 
-let rec compile_expr_to_c oc = function
+let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
+  | Ast.Void -> ()
   | Ast.Int n -> Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
   | Ast.Float f -> Printf.fprintf oc "    push_float(%.17g);\n" f
   | Ast.String s ->
