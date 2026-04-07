@@ -11,7 +11,7 @@ let whitespace = [' ' '\t' '\r']
 
 rule tokenize = parse
   | whitespace+        { tokenize lexbuf }
-  | '\n'               { Lexing.new_line lexbuf; NEWLINE }  
+  | '\n'               { Lexing.new_line lexbuf; tokenize lexbuf }  
 
   | digit+ '.' digit+  { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }
   | digit+             { INT (int_of_string (Lexing.lexeme lexbuf)) }

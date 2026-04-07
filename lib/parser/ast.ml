@@ -44,9 +44,11 @@ type stmt =
   | DefFN of string * param list * types * stmt list
   | DefVar of string * types * expr
   | Return of expr
+  | Block of stmt list
 
 let exec = function
   | Expr _ -> ()
   | DefFN (name, params, ty, _body) -> ()
   | DefVar (name, ty, value) -> ()
   | Return _ -> ()
+  | Block _ -> ()

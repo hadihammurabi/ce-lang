@@ -7,7 +7,7 @@
 %token <string> STRING IDENT
 %token          PLUS MINUS STAR SLASH
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS
-%token          NEWLINE EOF
+%token          EOF
 %token          FN VAR RETURN
 %token          TYPE_INT TYPE_FLOAT TYPE_VOID
 
@@ -20,14 +20,18 @@
 
 prog:
   | EOF                 { [] }
-  | NEWLINE prog        { $2 }
   | stmt prog           { $1 :: $2}
 
 stmt:
-  | expr terminator           { Expr $1 }
-  | def_fn terminator         { $1 }
-  | def_var terminator        { $1 }
-  | RETURN e = expr terminator { Return e }
+  | expr            { Expr $1 }
+  | def_fn          { $1 }
+  | def_var         { $1 }
+  | RETURN e = expr  { Return e }
+  | LBRACE body = stmt_list RBRACE { Block body }
+
+stmt_list:
+  | { [] }
+  | stmt stmt_list { $1 :: $2 }
 
 def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
@@ -52,19 +56,12 @@ param:
 
 def_fn:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types
-    LBRACE newline body = def_fn_body newline RBRACE
+    LBRACE body = def_fn_body RBRACE
     { DefFN (name, params, ty, body) }
 
 def_fn_body:
   | { [] }
   | stmt def_fn_body { $1 :: $2 }
-
-newline:
-  | { }
-  | NEWLINE newline { }
-
-terminator:
-  | NEWLINE | EOF        {}
 
 expr:
   | n = INT                                                       { Int n }

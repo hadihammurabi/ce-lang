@@ -54,7 +54,7 @@ let rec compile_expr ctx = function
     List.iter (compile_expr ctx) elems;
     emit ctx (Push_array (n, ty))
 
-let compile_stmt ctx = function
+let rec compile_stmt ctx = function
   | Ast.Expr (Call (fn, args) as e) ->
     compile_expr ctx (Call (fn, args));
     ignore e
@@ -74,6 +74,9 @@ let compile_stmt ctx = function
   | Ast.Return e ->
     compile_expr ctx e;
     emit ctx Return
+
+  | Ast.Block body -> 
+      List.iter (compile_stmt ctx) body
 
 let compile (stmts : Ast.stmt list) : program =
   let ctx = make_ctx () in

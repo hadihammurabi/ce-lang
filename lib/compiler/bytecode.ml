@@ -93,6 +93,10 @@ let rec compile_stmt_to_c oc = function
   | Ast.Return e ->
     compile_expr_to_c oc e;
     Printf.fprintf oc "    return;\n"
+  | Ast.Block body ->
+    output_string oc "    {\n";
+    List.iter (compile_stmt_to_c oc) body;
+    output_string oc "    }\n"
 
 let write_c_wrapper filename code functions globals =
   let oc = open_out filename in
