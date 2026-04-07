@@ -1,4 +1,4 @@
 (executable
-  (name main)
-  (public_name ce)
-  (libraries ce_lexer ce_parser ce_compiler cmdliner fmt))
+ (name main)
+ (public_name ce)
+ (libraries ce_lexer ce_parser ce_compiler cmdliner fmt))

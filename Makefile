@@ -25,10 +25,10 @@ lint:
 
 release: clean
 	dune build --release
-	dune install --prefix=./dist
+	dune install --prefix=./_build/release
 
 dev-setup:
-	opam install -y dune menhir sedlex ppx_deriving cmdliner fmt
+	opam install -y dune menhir sedlex ppx_deriving cmdliner fmt ocamlformat
 
 help:
 	@echo "CE-Lang Build Commands:"

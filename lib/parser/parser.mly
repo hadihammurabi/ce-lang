@@ -37,16 +37,15 @@ block:
   | LBRACE body = stmt_list RBRACE { body }
 
 stmt_if:
-  | IF e = expr body = block elif_branches = stmt_if_elif else_body = stmt_if_else
-    { If (e, body, elif_branches, else_body) }
+  | IF e = expr body = block tail = stmt_if_tail
+    { let (elif_branches, else_body) = tail in 
+      If (e, body, elif_branches, else_body) }
 
-stmt_if_elif:
-  |                                                   { [] }
-  | ELSE IF e = expr body = block rest = stmt_if_elif  { (e, body) :: rest }
-
-stmt_if_else:
-  |                    { None }
-  | ELSE body = block  { Some body }
+stmt_if_tail:
+  | { ([], None) }
+  | ELSE IF e = expr body = block tail = stmt_if_tail 
+      { let (elif_branches, else_body) = tail in ((e, body) :: elif_branches, else_body) }
+  | ELSE body = block { ([], Some body) }
 
 stmt_list:
   | { [] }
