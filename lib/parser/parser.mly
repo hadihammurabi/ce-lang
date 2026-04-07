@@ -27,7 +27,10 @@ stmt:
   | def_fn          { $1 }
   | def_var         { $1 }
   | RETURN e = expr  { Return e }
-  | LBRACE body = stmt_list RBRACE { Block body }
+  | body = block    { Block body }
+
+block:
+  | LBRACE body = stmt_list RBRACE { body }
 
 stmt_list:
   | { [] }
@@ -35,7 +38,6 @@ stmt_list:
 
 def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
-  | VAR name = IDENT ty = types EQUALS a = array { DefVar (name, ty, a) }
 
 type_scalar:
   | TYPE_INT   { TypeInt }
@@ -55,13 +57,8 @@ param:
   | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
 
 def_fn:
-  | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types
-    LBRACE body = def_fn_body RBRACE
+  | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
     { DefFN (name, params, ty, body) }
-
-def_fn_body:
-  | { [] }
-  | stmt def_fn_body { $1 :: $2 }
 
 expr:
   | n = INT                                                       { Int n }
@@ -75,4 +72,4 @@ expr:
   | LPAREN e = expr RPAREN                                        { e }
   | id = IDENT LPAREN args = separated_list(COMMA, expr) RPAREN   { Call (id, args) }
   | id = IDENT                                                    { Var id }
-  | a = array                                                 { a }
+  | a = array                                                     { a }
