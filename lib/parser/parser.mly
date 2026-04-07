@@ -31,6 +31,7 @@ stmt:
 
 def_var:
   | VAR name = IDENT ty = types EQUALS e = expr { DefVar (name, ty, e) }
+  | VAR name = IDENT ty = types EQUALS a = array { DefVar (name, ty, a) }
 
 type_scalar:
   | TYPE_INT   { TypeInt }
@@ -50,9 +51,9 @@ param:
   | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
 
 def_fn:
-    | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types
-      LBRACE newline body = def_fn_body newline RBRACE
-      { DefFN (name, params, ty, body) }
+  | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types
+    LBRACE newline body = def_fn_body newline RBRACE
+    { DefFN (name, params, ty, body) }
 
 def_fn_body:
   | { [] }

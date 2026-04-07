@@ -58,15 +58,11 @@ let rec compile_expr_to_c oc = function
     | "print"   -> Printf.fprintf oc "    builtin_print(%d);\n" argc
     | _ ->
       output_string oc "    {\n";
-      let arg_names = List.mapi (fun i _ ->
-        Printf.sprintf "__arg%d" i
-      ) args in
+      let arg_names = List.mapi (fun i _ -> Printf.sprintf "__arg%d" i) args in
       List.iter (fun aname ->
         Printf.fprintf oc "        Value %s = pop();\n" aname
       ) (List.rev arg_names);
-      let call_args = String.concat ", " (List.map (fun aname ->
-        Printf.sprintf "%s.value.i" aname
-      ) arg_names) in
+      let call_args = String.concat ", " arg_names in
       Printf.fprintf oc "        %s(%s);\n" name call_args;
       output_string oc "    }\n"
     )
@@ -104,9 +100,8 @@ let write_c_wrapper filename code functions globals =
   output_string oc "#include <stdint.h>\n";
   output_string oc "#include <string.h>\n";
   output_string oc "#include <stdlib.h>\n\n";
-  
+
   output_string oc "#define STACK_SIZE 10000\n\n";
-  
   output_string oc "typedef struct Value Value;\n";
   output_string oc "struct Value {\n";
   output_string oc "    int type;\n";
@@ -117,10 +112,9 @@ let write_c_wrapper filename code functions globals =
   output_string oc "        struct { Value *data; int len; } arr;\n";
   output_string oc "    } value;\n";
   output_string oc "};\n\n";
-  
   output_string oc "static Value stack[STACK_SIZE];\n";
   output_string oc "static int sp = 0;\n\n";
-  
+
   output_string oc "void push_int(int64_t n) {\n";
   output_string oc "    stack[sp].type = 0;\n";
   output_string oc "    stack[sp].value.i = n;\n";
@@ -199,51 +193,26 @@ let write_c_wrapper filename code functions globals =
   output_string oc "\n";
 
   List.iter (fun (fname, params, _ty, _body) ->
-  let fn_name = if fname = "main" then "fn_main" else fname in
-  let param_str =
-    if params = [] then "void"
-    else String.concat ", " (List.map (fun p ->
-      let t = match p.Ast.ty with
-        | Ast.TypeInt   -> "int64_t"
-        | Ast.TypeFloat -> "double"
-        | Ast.TypeVoid  -> "void"
-        | Ast.TypeArray (_, _) -> "Value"
-      in
-      Printf.sprintf "%s %s" t p.name
-    ) params)
-  in
-  Printf.fprintf oc "void %s(%s);\n" fn_name param_str
-) functions;
+    let fn_name = if fname = "main" then "fn_main" else fname in
+    let param_str =
+      if params = [] then "void"
+      else
+        String.concat ", "
+          (List.map (fun p -> Printf.sprintf "Value %s" p.Ast.name) params)
+    in
+    Printf.fprintf oc "void %s(%s);\n" fn_name param_str
+  ) functions;
   output_string oc "\n";
 
   List.iter (fun (fname, params, _ty, body) ->
     let fn_name = if fname = "main" then "fn_main" else fname in
     let param_str =
       if params = [] then "void"
-      else String.concat ", " (List.map (fun p ->
-        let t = match p.Ast.ty with
-          | Ast.TypeInt   -> "int64_t"
-          | Ast.TypeFloat -> "double"
-          | Ast.TypeVoid  -> "void"
-          | Ast.TypeArray (_, _) -> "Value"
-        in
-        Printf.sprintf "%s arg_%s" t p.Ast.name
-      ) params)
+      else
+        String.concat ", "
+          (List.map (fun p -> Printf.sprintf "Value %s" p.Ast.name) params)
     in
-    Printf.fprintf oc "void %s(%s) {\n" fn_name param_str; 
-    List.iter (fun p ->
-      match p.Ast.ty with
-      | Ast.TypeInt ->
-        Printf.fprintf oc "    push_int(arg_%s);\n" p.Ast.name;
-        Printf.fprintf oc "    Value %s_val = pop();\n" p.Ast.name; 
-        Printf.fprintf oc "    Value %s = %s_val;\n" p.Ast.name p.Ast.name 
-      | Ast.TypeFloat -> Printf.fprintf oc "    push_float(arg_%s);\n" p.Ast.name;
-        Printf.fprintf oc "    Value %s_val = pop();\n" p.Ast.name;
-        Printf.fprintf oc "    Value %s = %s_val;\n" p.Ast.name p.Ast.name
-      | Ast.TypeVoid -> ()
-      | Ast.TypeArray _ -> Printf.fprintf oc "    Value %s = arg_%s;\n"  p.Ast.name p.Ast.name
-    ) params;
-
+    Printf.fprintf oc "void %s(%s) {\n" fn_name param_str;
     List.iter (compile_stmt_to_c oc) body;
     output_string oc "}\n\n"
   ) functions;
