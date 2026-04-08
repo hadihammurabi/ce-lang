@@ -5,8 +5,10 @@ all: build
 build:
 	dune build @all
 
-install:
-	dune install
+install: build
+	mkdir -p /usr/lib/ce
+	cp -r ./std /usr/lib/ce
+	dune install --prefix /usr/local
 
 clean:
 	dune clean

@@ -18,7 +18,8 @@ let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
 let register_function ctx name params ty body =
   ctx.functions <- (name, params, ty, body) :: ctx.functions
 
-let rec compile_expr ctx (e : Ast.expr) = match e.kind with
+let rec compile_expr ctx (e : Ast.expr) =
+  match e.kind with
   | Ast.Void -> ()
   | Ast.Int n -> emit ctx (Push_int n)
   | Ast.Float f -> emit ctx (Push_float f)

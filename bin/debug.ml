@@ -10,15 +10,15 @@ let execute file bytecode =
   try
     let prog = ast |> Typer.check_program |> Compiler.compile in
     if bytecode then
-      let _ = Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals in
+      let _ =
+        Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals
+      in
       let _ = c_file |> Build.read |> print_endline in
       Linker.cleanup_temp c_file
-    else
-      Debug.dump prog.code prog.functions;
+    else Debug.dump prog.code prog.functions
   with Failure msg ->
     Printf.printf "Error: %s\n" msg;
     exit 1
-  
 
 let bytecode_arg =
   let doc = "Print the generated C code to stdout" in

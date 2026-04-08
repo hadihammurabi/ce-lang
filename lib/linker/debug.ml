@@ -1,7 +1,8 @@
 open Ce_parser.Ast
 open Ce_compiler.Opcode
 
-let dump (code : opcode array) (functions : (string *param list* types * stmt list) list) =
+let dump (code : opcode array)
+    (functions : (string * param list * types * stmt list) list) =
   Printf.printf "=== Global Bytecode ===\n";
   dump code;
 

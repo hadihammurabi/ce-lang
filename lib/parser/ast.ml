@@ -8,10 +8,7 @@ type types =
   | TypeArray of int * types
 [@@deriving show]
 
-type expr = {
-  kind : expr_kind;
-  ty : types; (* This is the 'T' in TAST *)
-}
+type expr = { kind : expr_kind; ty : types }
 
 and expr_kind =
   | Void
@@ -39,7 +36,8 @@ and expr_kind =
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
 [@@deriving show]
 
-and param = { name : string; ty : types (* data type *) }
+and param = { name : string; ty : types }
+
 and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
@@ -51,7 +49,8 @@ and stmt =
   | Break
   | Import of string list
 
-let rec to_string e: string = match e.kind with
+let rec to_string e : string =
+  match e.kind with
   | Void -> ""
   | String s -> s
   | Bool b -> string_of_bool b
@@ -77,14 +76,3 @@ let rec to_string e: string = match e.kind with
       Printf.sprintf "[%d]%s{%s}" n (show_types t)
         (String.concat ", " (List.map to_string elems))
   | If (cond, _, _, _) -> Printf.sprintf "if(%s)" (to_string cond)
-
-(* let exec = function *)
-(*   | Expr _ -> () *)
-(*   | DefFN (name, params, ty, _body) -> () *)
-(*   | DefLet (name, ismut, ty, value) -> () *)
-(*   | Assign _ -> () *)
-(*   | Return _ -> () *)
-(*   | Block _ -> () *)
-(*   | For _ -> () *)
-(*   | Break -> () *)
-(*   | Import _ -> () *)

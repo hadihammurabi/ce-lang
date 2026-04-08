@@ -2,7 +2,8 @@ open Ce_parser
 
 let c_safe name = String.map (fun c -> if c = '.' then '_' else c) name
 
-let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
+let rec compile_expr_to_c oc (e : Ast.expr) =
+  match e.kind with
   | Ast.Void -> ()
   | Ast.Int n -> Printf.fprintf oc "    push_int(%LdL);\n" (Int64.of_int n)
   | Ast.Float f -> Printf.fprintf oc "    push_float(%.17g);\n" f
@@ -13,82 +14,128 @@ let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if e.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l + r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_int(l + r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l + r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_float(l + r); }\n"
   | Ast.Sub (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if e.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l - r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_int(l - r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l - r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_float(l - r); }\n"
   | Ast.Mul (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if e.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l * r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_int(l * r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l * r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_float(l * r); }\n"
   | Ast.Div (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if e.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l / r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_int(l / r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l / r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_float(l / r); }\n"
   | Ast.Mod (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if e.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_int(l % r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_int(l % r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_float(l % r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_float(l % r); }\n"
   | Ast.Eq (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if l.ty = Ast.TypeInt || l.ty = Ast.TypeBool then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l == r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_bool(l == r); }\n"
       else if l.ty = Ast.TypeFloat then
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l == r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_bool(l == r); }\n"
       else if l.ty = Ast.TypeString then
-        output_string oc "    { char* r = pop().value.s; char* l = pop().value.s; push_bool(strcmp(l, r) == 0); }\n"
+        output_string oc
+          "    { char* r = pop().value.s; char* l = pop().value.s; \
+           push_bool(strcmp(l, r) == 0); }\n"
   | Ast.Lt (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if l.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l < r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_bool(l < r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l < r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_bool(l < r); }\n"
   | Ast.Gt (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if l.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l > r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_bool(l > r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l > r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_bool(l > r); }\n"
   | Ast.Lte (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if l.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l <= r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_bool(l <= r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l <= r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_bool(l <= r); }\n"
   | Ast.Gte (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
       if l.ty = Ast.TypeInt then
-        output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l >= r); }\n"
+        output_string oc
+          "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+           push_bool(l >= r); }\n"
       else
-        output_string oc "    { double r = pop().value.f; double l = pop().value.f; push_bool(l >= r); }\n"
+        output_string oc
+          "    { double r = pop().value.f; double l = pop().value.f; \
+           push_bool(l >= r); }\n"
   | Ast.And (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l && r); }\n"
+      output_string oc
+        "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+         push_bool(l && r); }\n"
   | Ast.Or (l, r) ->
       compile_expr_to_c oc l;
       compile_expr_to_c oc r;
-      output_string oc "    { int64_t r = pop().value.i; int64_t l = pop().value.i; push_bool(l || r); }\n"
+      output_string oc
+        "    { int64_t r = pop().value.i; int64_t l = pop().value.i; \
+         push_bool(l || r); }\n"
   | Ast.Neg e ->
       compile_expr_to_c oc e;
       if e.ty = Ast.TypeInt then
@@ -133,11 +180,11 @@ let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
   | Ast.If (cond, then_body, elif_branches, else_body) ->
       output_string oc "    {\n";
       compile_expr_to_c oc cond;
-      
+
       output_string oc "    if (pop().value.i) {\n";
       List.iter (compile_stmt_to_c oc) then_body;
       output_string oc "    }\n";
-      
+
       List.iter
         (fun (econd, ebody) ->
           output_string oc "    else {\n";
@@ -146,7 +193,7 @@ let rec compile_expr_to_c oc (e : Ast.expr) = match e.kind with
           List.iter (compile_stmt_to_c oc) ebody;
           output_string oc "    }\n")
         elif_branches;
-        
+
       (match else_body with
       | Some stmts ->
           output_string oc "    else {\n";
