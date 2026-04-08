@@ -37,6 +37,7 @@ and expr_kind =
   | Array of int * types * expr list
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
+[@@deriving show]
 
 and param = { name : string; ty : types (* data type *) }
 and stmt =

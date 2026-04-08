@@ -7,16 +7,18 @@ let execute file bytecode =
   let ast = Build.parse_file visited file in
   let base_name = String.sub file 0 (String.rindex file '.') in
   let c_file = base_name ^ ".c" in
-  let _ =
-    try
-      let prog = Compiler.compile @@ Typer.check_program ast in
-      Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals
-    with Failure msg ->
-      Printf.printf "Error: %s\n" msg;
-      exit 1
-  in
-  c_file |> Build.read |> print_endline;
-  Linker.cleanup_temp c_file
+  try
+    let prog = ast |> Typer.check_program |> Compiler.compile in
+    if bytecode then
+      let _ = Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals in
+      let _ = c_file |> Build.read |> print_endline in
+      Linker.cleanup_temp c_file
+    else
+      Debug.dump prog.code prog.functions;
+  with Failure msg ->
+    Printf.printf "Error: %s\n" msg;
+    exit 1
+  
 
 let bytecode_arg =
   let doc = "Print the generated C code to stdout" in

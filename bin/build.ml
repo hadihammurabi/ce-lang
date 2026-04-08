@@ -169,19 +169,12 @@ let rec parse_file visited filepath =
       ast
   end
 
-let compile code =
-  try code |> parse |> Compiler.compile with
-  | Lexer.Lexer_error (msg, pos) ->
-      Printf.printf "Lexer error at %s: %s\n\n" (format_position pos) msg;
-      exit 1
-  | Failure msg ->
-      Printf.printf "Error: %s\n\n" msg;
-      exit 1
-
 let execute file =
-  let binary_file = remove_extension file in
-  let _ = file |> read |> compile |> Linker.export binary_file in
-  Printf.printf "Compiled and linked: %s\n" binary_file
+  let binary_name = remove_extension file in
+  let visited = Hashtbl.create 10 in
+  let ast = parse_file visited file in
+  let _ = ast |> Typer.check_program |> Compiler.compile |> Linker.export binary_name in
+  Printf.printf "Compiled and linked: %s\n" binary_name
 
 let command =
   let doc = "Compile inserted ce-lang code file to binary executable" in
