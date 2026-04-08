@@ -2,6 +2,14 @@ open Ce_parser
 
 let c_safe name = String.map (fun c -> if c = '.' then '_' else c) name
 
+let c_type_of = function
+  | Ast.TypeInt -> "int64_t"
+  | Ast.TypeFloat -> "double"
+  | Ast.TypeBool -> "int64_t"
+  | Ast.TypeString -> "char*"
+  | Ast.TypeVoid -> "void"
+  | _ -> "Value"
+
 let rec compile_expr_to_c oc (e : Ast.expr) =
   match e.kind with
   | Ast.Void -> ()
@@ -157,7 +165,7 @@ let rec compile_expr_to_c oc (e : Ast.expr) =
             (fun aname -> Printf.fprintf oc "        Value %s = pop();\n" aname)
             (List.rev arg_names);
           let call_args = String.concat ", " arg_names in
-          Printf.fprintf oc "        %s(%s);\n" (c_safe name) call_args;
+          Printf.fprintf oc "        ce_%s(%s);\n" (c_safe name) call_args;
           output_string oc "    }\n")
   | Ast.Let name ->
       Printf.fprintf oc "    stack[sp] = %s;\n" (c_safe name);
@@ -211,7 +219,7 @@ and compile_stmt_to_c oc = function
   | Ast.DefFN _ -> ()
   | Ast.Return e ->
       compile_expr_to_c oc e;
-      Printf.fprintf oc "    return;\n"
+      Printf.fprintf oc "    return pop().value.i;\n"
   | Ast.Block body ->
       output_string oc "    {\n";
       List.iter (compile_stmt_to_c oc) body;
@@ -348,28 +356,28 @@ let write_c_wrapper filename code functions globals =
   output_string oc "\n";
 
   List.iter
-    (fun (fname, params, _ty, _body) ->
-      let fn_name = if fname = "main" then "fn_main" else c_safe fname in
+    (fun (fname, params, ty, _body) ->
+      let fn_name = "ce_" ^ c_safe fname in
       let param_str =
         if params = [] then "void"
         else
           String.concat ", "
             (List.map (fun p -> Printf.sprintf "Value %s" p.Ast.name) params)
       in
-      Printf.fprintf oc "void %s(%s);\n" fn_name param_str)
+      Printf.fprintf oc "%s %s(%s);\n" (c_type_of ty) fn_name param_str)
     functions;
   output_string oc "\n";
 
   List.iter
-    (fun (fname, params, _ty, body) ->
-      let fn_name = if fname = "main" then "fn_main" else c_safe fname in
+    (fun (fname, params, ty, body) ->
+      let fn_name = "ce_" ^ c_safe fname in
       let param_str =
         if params = [] then "void"
         else
           String.concat ", "
             (List.map (fun p -> Printf.sprintf "Value %s" p.Ast.name) params)
       in
-      Printf.fprintf oc "void %s(%s) {\n" fn_name param_str;
+      Printf.fprintf oc "%s %s(%s) {\n" (c_type_of ty) fn_name param_str;
       List.iter (compile_stmt_to_c oc) body;
       output_string oc "}\n\n")
     functions;
@@ -383,7 +391,7 @@ let write_c_wrapper filename code functions globals =
       Printf.fprintf oc "    *(Value*)&%s = pop();\n\n" (c_safe name))
     globals;
 
-  output_string oc "    fn_main();\n";
+  output_string oc "    ce_main();\n";
   output_string oc "    return 0;\n";
   output_string oc "}\n";
 

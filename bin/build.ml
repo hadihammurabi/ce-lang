@@ -128,9 +128,8 @@ let rec parse_file visited filepath =
 
     let current_dir = Filename.dirname abs_path in
 
-    let search_paths =
-      [ "/usr/lib/ce/std"; Sys.getenv "CE_STD_PATH"; current_dir ]
-    in
+    let env_ce_std_path = try Sys.getenv "CE_STD_PATH" with Not_found -> "" in
+    let search_paths = [ env_ce_std_path; "/usr/lib/ce/std"; current_dir ] in
 
     List.concat_map
       (fun stmt ->
