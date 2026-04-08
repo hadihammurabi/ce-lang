@@ -164,8 +164,20 @@ let rec compile_expr_to_c oc (e : Ast.expr) =
           List.iter
             (fun aname -> Printf.fprintf oc "        Value %s = pop();\n" aname)
             (List.rev arg_names);
+
           let call_args = String.concat ", " arg_names in
-          Printf.fprintf oc "        ce_%s(%s);\n" (c_safe name) call_args;
+          (match e.ty with
+          | Ast.TypeFloat ->
+              Printf.fprintf oc "        push_float(ce_%s(%s));\n" (c_safe name)
+                call_args
+          | Ast.TypeString ->
+              Printf.fprintf oc "        push_string(ce_%s(%s));\n"
+                (c_safe name) call_args
+          | Ast.TypeVoid ->
+              Printf.fprintf oc "        ce_%s(%s);\n" (c_safe name) call_args
+          | _ ->
+              Printf.fprintf oc "        push_int(ce_%s(%s));\n" (c_safe name)
+                call_args);
           output_string oc "    }\n")
   | Ast.Let name ->
       Printf.fprintf oc "    stack[sp] = %s;\n" (c_safe name);
@@ -217,9 +229,13 @@ and compile_stmt_to_c oc = function
       compile_expr_to_c oc expr;
       Printf.fprintf oc "    Value %s = pop();\n" (c_safe name)
   | Ast.DefFN _ -> ()
-  | Ast.Return e ->
+  | Ast.Return e -> (
       compile_expr_to_c oc e;
-      Printf.fprintf oc "    return pop().value.i;\n"
+      match e.ty with
+      | Ast.TypeFloat -> Printf.fprintf oc "    return pop().value.f;\n"
+      | Ast.TypeString -> Printf.fprintf oc "    return pop().value.s;\n"
+      | Ast.TypeVoid -> ()
+      | _ -> Printf.fprintf oc "    return pop().value.i;\n")
   | Ast.Block body ->
       output_string oc "    {\n";
       List.iter (compile_stmt_to_c oc) body;

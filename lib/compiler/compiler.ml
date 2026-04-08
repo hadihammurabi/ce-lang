@@ -7,10 +7,17 @@ type ctx = {
     (string * Ast.param list * Ast.types * Ast.stmt list) list;
   mutable globals : (string * bool * Ast.types * Ast.expr) list;
   env : (string, bool) Hashtbl.t;
+  mutable fn_depth : int;
 }
 
 let make_ctx () =
-  { code = []; functions = []; globals = []; env = Hashtbl.create 16 }
+  {
+    code = [];
+    functions = [];
+    globals = [];
+    env = Hashtbl.create 16;
+    fn_depth = 0;
+  }
 
 let emit ctx op = ctx.code <- op :: ctx.code
 let finish ctx : opcode array = Array.of_list (List.rev ctx.code)
@@ -108,14 +115,17 @@ and compile_stmt ctx = function
 
       let previous_env = Hashtbl.copy ctx.env in
       List.iter (fun p -> Hashtbl.add ctx.env p.Ast.name false) params;
+      ctx.fn_depth <- ctx.fn_depth + 1;
       List.iter (compile_stmt ctx) body;
+      ctx.fn_depth <- ctx.fn_depth - 1;
       Hashtbl.clear ctx.env;
       Hashtbl.iter (fun k v -> Hashtbl.add ctx.env k v) previous_env
   | Ast.DefLet (name, ismut, ty, value) ->
       compile_expr ctx value;
       Hashtbl.add ctx.env name ismut;
       emit ctx (DefLet (name, ismut));
-      ctx.globals <- (name, ismut, ty, value) :: ctx.globals
+      if ctx.fn_depth = 0 then
+        ctx.globals <- (name, ismut, ty, value) :: ctx.globals
   | Ast.Assign (name, expr) ->
       (match Hashtbl.find_opt ctx.env name with
       | None -> failwith (Printf.sprintf "Variable '%s' is not defined" name)

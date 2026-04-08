@@ -119,8 +119,9 @@ let rec check_expr env (e : expr) : expr =
       else
         match Hashtbl.find_opt env.funcs fn_name with
         | Some (param_tys, ret_ty) ->
-            if param_tys <> arg_types then
-              failwith ("Type Error: Argument mismatch in call to " ^ fn_name);
+            if param_tys <> arg_types then begin
+              failwith ("Type Error: Argument mismatch in call to " ^ fn_name)
+            end;
             { kind = Call (fn_name, args_typed); ty = ret_ty }
         | None -> failwith ("Type Error: Undefined function '" ^ fn_name ^ "'"))
   | Array (n, ty, elems) ->
@@ -153,6 +154,13 @@ let rec check_expr env (e : expr) : expr =
         List.map (check_stmt scoped_env) stmts
       in
 
+      let block_type stmts =
+        match List.rev stmts with
+        | Expr e :: _ -> e.ty
+        | Return e :: _ -> e.ty
+        | _ -> TypeVoid
+      in
+
       let then_typed = check_block then_body in
 
       let elifs_typed =
@@ -167,10 +175,16 @@ let rec check_expr env (e : expr) : expr =
 
       let else_typed = Option.map check_block else_body in
 
+      let inferred_ty = block_type then_typed in
       {
         kind = If (cond_typed, then_typed, elifs_typed, else_typed);
-        ty = TypeVoid;
+        ty = inferred_ty;
       }
+  | Neg inner ->
+      let inner_typed = check_expr env inner in
+      if inner_typed.ty = TypeInt || inner_typed.ty = TypeFloat then
+        { kind = Neg inner_typed; ty = inner_typed.ty }
+      else failwith "Type Error: Negation requires numeric type"
   | _ -> e
 
 and check_stmt env (s : stmt) : stmt =
