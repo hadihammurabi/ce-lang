@@ -1,4 +1,3 @@
-open Ce_linker
 open Ce_compiler
 open Cmdliner
 

@@ -1,10 +1,8 @@
-open Ce_linker
 open Ce_compiler
 open Cmdliner
 
 let execute file bytecode =
-  let visited = Hashtbl.create 10 in
-  let ast = Build.parse_file visited file in
+  let ast = Build.parse @@ Build.read file in
   (* let base_name = String.sub file 0 (String.rindex file '.') in *)
   (* let c_file = base_name ^ ".c" in *)
   try

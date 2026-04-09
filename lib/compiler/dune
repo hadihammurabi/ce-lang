@@ -1,4 +1,10 @@
 (library
   (name ce_compiler)
-  (libraries ce_parser llvm llvm.analysis llvm.target llvm.all_backends)
+  (libraries 
+    ce_parser 
+    llvm 
+    llvm.analysis 
+    llvm.target 
+    llvm.all_backends 
+    llvm.passbuilder)
 )

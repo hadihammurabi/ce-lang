@@ -233,10 +233,54 @@ and codegen_stmt = function
   | Return e -> build_ret (codegen_expr e) ce_builder
   | Import _ -> const_null (void_type ce_ctx)
 
+let optimize the_module =
+  ignore (Llvm_all_backends.initialize ());
+  let target_triple = Llvm_target.Target.default_triple () in
+  let target = Llvm_target.Target.by_triple target_triple in
+  let target_machine =
+    Llvm_target.TargetMachine.create ~triple:target_triple target
+  in
+
+  let pbo = Llvm_passbuilder.create_passbuilder_options () in
+
+  begin match
+    Llvm_passbuilder.run_passes the_module "default<O3>" target_machine pbo
+  with
+  | Ok () -> ()
+  | Error msg -> Printf.eprintf "Optimization error: %s\n" msg
+  end;
+
+  Llvm_passbuilder.dispose_passbuilder_options pbo;
+  the_module
+
 let compile (stmts : stmt list) =
   List.iter (fun s -> ignore (codegen_stmt s)) stmts;
-  ce_module
+  optimize ce_module
 
 let dump m =
   let module_string = string_of_llmodule m in
   print_endline module_string
+
+open Llvm
+
+let export binary_name the_module =
+  ignore (Llvm_all_backends.initialize ());
+  let target_triple = Llvm_target.Target.default_triple () in
+  let target = Llvm_target.Target.by_triple target_triple in
+  let machine =
+    Llvm_target.TargetMachine.create ~triple:target_triple target
+      ~reloc_mode:Llvm_target.RelocMode.PIC
+  in
+
+  let obj_filename = binary_name ^ ".o" in
+  Llvm_target.TargetMachine.emit_to_file the_module
+    Llvm_target.CodeGenFileType.ObjectFile obj_filename machine;
+
+  let link_cmd = Printf.sprintf "cc %s -o %s" obj_filename binary_name in
+  match Sys.command link_cmd with
+  | 0 ->
+      if Sys.file_exists obj_filename then Sys.remove obj_filename;
+      ()
+  | code ->
+      Printf.eprintf "Linking failed with code %d\n" code;
+      exit 1
