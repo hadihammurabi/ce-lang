@@ -16,37 +16,52 @@ let get name =
   | "println" | "print" | "printf" ->
       Some
         (fun context the_module builder fn_name arg_vals ->
-          let fmt_parts = ref [] in
-
-          let processed_args =
-            List.map
-              (fun v ->
-                let ty = type_of v in
-                if ty = i64_type context then (
-                  fmt_parts := "%ld" :: !fmt_parts;
-                  v)
-                else if ty = double_type context then (
-                  fmt_parts := "%g" :: !fmt_parts;
-                  v)
-                else if ty = pointer_type context then (
-                  fmt_parts := "%s" :: !fmt_parts;
-                  v)
-                else if ty = i1_type context then (
-                  fmt_parts := "%s" :: !fmt_parts;
+          let rec process_arg v =
+            let ty = type_of v in
+            match classify_type ty with
+            | TypeKind.Integer ->
+                if integer_bitwidth ty = 1 then
                   let true_str =
                     build_global_stringptr "true" "truestr" builder
                   in
                   let false_str =
                     build_global_stringptr "false" "falsestr" builder
                   in
-                  build_select v true_str false_str "boolstr" builder)
-                else (
-                  fmt_parts := "(complex_type)" :: !fmt_parts;
-                  v))
-              arg_vals
+                  let str_val =
+                    build_select v true_str false_str "boolstr" builder
+                  in
+                  ("%s", [ str_val ])
+                else ("%ld", [ v ])
+            | TypeKind.Double -> ("%g", [ v ])
+            | TypeKind.Pointer -> ("%s", [ v ])
+            | TypeKind.Array ->
+                let len = array_length ty in
+                let fmt_acc = ref [] in
+                let val_acc = ref [] in
+
+                for i = 0 to len - 1 do
+                  let elem = build_extractvalue v i "exttmp" builder in
+                  let e_fmt, e_vals = process_arg elem in
+                  fmt_acc := e_fmt :: !fmt_acc;
+                  val_acc := !val_acc @ e_vals
+                done;
+
+                let fmt_str =
+                  "[" ^ String.concat ", " (List.rev !fmt_acc) ^ "]"
+                in
+                (fmt_str, !val_acc)
+            | _ -> ("(complex_type)", [])
           in
 
-          let space_sep = String.concat " " (List.rev !fmt_parts) in
+          let fmts, vals =
+            List.fold_left
+              (fun (f_acc, v_acc) v ->
+                let f, vs = process_arg v in
+                (f :: f_acc, v_acc @ vs))
+              ([], []) arg_vals
+          in
+
+          let space_sep = String.concat " " (List.rev fmts) in
           let final_fmt =
             if fn_name = "println" then space_sep ^ "\n" else space_sep
           in
@@ -56,6 +71,7 @@ let get name =
           let printf_ty =
             var_arg_function_type (i32_type context) [| pointer_type context |]
           in
-          let printf_args = Array.of_list (fmt_val :: processed_args) in
+
+          let printf_args = Array.of_list (fmt_val :: vals) in
           build_call printf_ty printf_func printf_args "printftmp" builder)
   | _ -> None
