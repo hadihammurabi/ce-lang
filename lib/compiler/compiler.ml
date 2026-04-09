@@ -27,29 +27,72 @@ let rec codegen_expr = function
       | Some (v, ty) -> build_load ty v name ce_builder
       | None -> raise (Error ("Unknown variable: " ^ name)))
   | Add (l, r) ->
-      build_add (codegen_expr l) (codegen_expr r) "addtmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fadd lv rv "faddtmp" ce_builder
+      else build_add lv rv "addtmp" ce_builder
   | Sub (l, r) ->
-      build_sub (codegen_expr l) (codegen_expr r) "subtmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fsub lv rv "fsubtmp" ce_builder
+      else build_sub lv rv "subtmp" ce_builder
   | Mul (l, r) ->
-      build_mul (codegen_expr l) (codegen_expr r) "multmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fmul lv rv "fmultmp" ce_builder
+      else build_mul lv rv "multmp" ce_builder
   | Div (l, r) ->
-      build_sdiv (codegen_expr l) (codegen_expr r) "divtmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fdiv lv rv "fdivtmp" ce_builder
+      else build_sdiv lv rv "divtmp" ce_builder
   | Mod (l, r) ->
-      build_srem (codegen_expr l) (codegen_expr r) "modtmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_frem lv rv "fmodtmp" ce_builder
+      else build_srem lv rv "modtmp" ce_builder
   | Eq (l, r) ->
-      build_icmp Icmp.Eq (codegen_expr l) (codegen_expr r) "eqtmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fcmp Fcmp.Oeq lv rv "feqtmp" ce_builder
+      else build_icmp Icmp.Eq lv rv "eqtmp" ce_builder
   | Lt (l, r) ->
-      build_icmp Icmp.Slt (codegen_expr l) (codegen_expr r) "lttmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fcmp Fcmp.Olt lv rv "flttmp" ce_builder
+      else build_icmp Icmp.Slt lv rv "lttmp" ce_builder
   | Lte (l, r) ->
-      build_icmp Icmp.Sle (codegen_expr l) (codegen_expr r) "ltetmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fcmp Fcmp.Ole lv rv "fltetmp" ce_builder
+      else build_icmp Icmp.Sle lv rv "ltetmp" ce_builder
   | Gt (l, r) ->
-      build_icmp Icmp.Sgt (codegen_expr l) (codegen_expr r) "gttmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fcmp Fcmp.Ogt lv rv "fgttmp" ce_builder
+      else build_icmp Icmp.Sgt lv rv "gttmp" ce_builder
   | Gte (l, r) ->
-      build_icmp Icmp.Sge (codegen_expr l) (codegen_expr r) "gtetmp" ce_builder
+      let lv = codegen_expr l in
+      let rv = codegen_expr r in
+      if type_of lv = double_type ce_ctx then
+        build_fcmp Fcmp.Oge lv rv "fgtetmp" ce_builder
+      else build_icmp Icmp.Sge lv rv "gtetmp" ce_builder
   | And (l, r) ->
       build_and (codegen_expr l) (codegen_expr r) "andtmp" ce_builder
   | Or (l, r) -> build_or (codegen_expr l) (codegen_expr r) "ortmp" ce_builder
-  | Neg e -> build_neg (codegen_expr e) "negtmp" ce_builder
+  | Neg e ->
+      let v = codegen_expr e in
+      if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
+      else build_neg v "negtmp" ce_builder
   | Call (fn_name, args) -> (
       let arg_vals = List.map codegen_expr args in
       match Builtin.get fn_name with
@@ -85,7 +128,6 @@ let rec codegen_expr = function
   | If (cond, then_body, elif_branches, else_body) ->
       let the_function = block_parent (insertion_block ce_builder) in
       let merge_bb = append_block ce_ctx "ifcont" the_function in
-
       let codegen_block_yield stmts =
         let rec aux = function
           | [] -> const_null (void_type ce_ctx)
@@ -108,13 +150,11 @@ let rec codegen_expr = function
 
         let then_val = codegen_block_yield body in
         let then_bb_end = insertion_block ce_builder in
-
         (match block_terminator then_bb_end with
         | None ->
             ignore (build_br merge_bb ce_builder);
             phi_incoming := (then_val, then_bb_end) :: !phi_incoming
         | Some _ -> ());
-
         position_at_end next_bb ce_builder;
         match rest_elifs with
         | (elif_c, elif_body) :: rest -> build_if elif_c elif_body rest else_b
@@ -125,23 +165,21 @@ let rec codegen_expr = function
               | None -> const_null (void_type ce_ctx)
             in
             let else_bb_end = insertion_block ce_builder in
+
             match block_terminator else_bb_end with
             | None ->
                 ignore (build_br merge_bb ce_builder);
                 phi_incoming := (else_val, else_bb_end) :: !phi_incoming
             | Some _ -> ())
       in
-
       build_if cond then_body elif_branches else_body;
-
       position_at_end merge_bb ce_builder;
-      let incoming = List.rev !phi_incoming in
 
+      let incoming = List.rev !phi_incoming in
       if incoming = [] then const_null (void_type ce_ctx)
       else
         let first_val, _ = List.hd incoming in
         let ty = type_of first_val in
-
         if ty = void_type ce_ctx then const_null (void_type ce_ctx)
         else build_phi incoming "iftmp" ce_builder
 
