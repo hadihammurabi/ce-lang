@@ -18,19 +18,17 @@ let parse src =
          (Printf.sprintf "Parse error at line %d, column %d, near token '%s'"
             line col token))
 
-(* let format_position pos = *)
-(*   let line = pos.Lexing.pos_lnum in *)
-(*   let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol in *)
-(*   Printf.sprintf "line %d, column %d" line col *)
-
 let remove_extension filename =
   match String.rindex_opt filename '.' with
   | Some dot_index -> String.sub filename 0 dot_index
   | None -> filename
 
+let rec process_file visited filepath = parse @@ read filepath
+
 let execute file =
   let binary_name = remove_extension file in
-  let ast = parse @@ read file in
+  let visited = Hashtbl.create 10 in
+  let ast = process_file visited file in
   let _ = ast |> Compiler.compile |> Compiler.export binary_name in
   Printf.printf "Compiled and linked: %s\n" binary_name
 
