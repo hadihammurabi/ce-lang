@@ -27,6 +27,7 @@
     ppx_deriving
     cmdliner
     fmt
+    llvm
     (alcotest :with-test)
     (bisect_ppx :with-test))
 )

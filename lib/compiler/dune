@@ -1,3 +1,4 @@
 (library
- (name ce_compiler)
- (libraries ce_parser))
+  (name ce_compiler)
+  (libraries ce_parser llvm llvm.analysis llvm.target llvm.all_backends)
+)

@@ -3,19 +3,20 @@ open Ce_compiler
 open Cmdliner
 
 let execute file =
-  let binary_name = Build.remove_extension file in
-  let visited = Hashtbl.create 10 in
-  let ast = Build.parse_file visited file in
-  let _ =
-    try
-      ast |> Typer.check_program |> Compiler.compile
-      |> Linker.export binary_name
-    with Failure msg ->
-      Printf.printf "Error: %s\n" msg;
-      exit 1
-  in
-
-  "./" ^ binary_name |> Sys.command |> fun code -> if code <> 0 then exit code
+  (* let binary_name = Build.remove_extension file in *)
+  (* let visited = Hashtbl.create 10 in *)
+  (* let ast = Build.parse_file visited file in *)
+  (* let _ = *)
+  (*   try *)
+  (*     ast |> Typer.check_program |> Compiler.compile *)
+  (*     |> Linker.export binary_name *)
+  (*   with Failure msg -> *)
+  (*     Printf.printf "Error: %s\n" msg; *)
+  (*     exit 1 *)
+  (* in *)
+  (**)
+  (* "./" ^ binary_name |> Sys.command |> fun code -> if code <> 0 then exit code *)
+print_endline "nice"
 
 let command =
   let doc = "Compile inserted ce-lang code file then execute that" in

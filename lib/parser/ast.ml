@@ -1,16 +1,29 @@
+open Llvm
+
+let ce_ctx = global_context ()
+let ce_module = create_module ce_ctx "ce"
+let ce_builder = builder ce_ctx
+
 type types =
-  | TypeBool
-  | TypeVoid
-  | TypeString
-  | TypeInt
-  | TypeFloat
-  | TypeUnknown
-  | TypeArray of int * types
+  | TBool
+  | TVoid
+  | TString
+  | TInt
+  | TFloat
+  | TUnknown
+  | TArray of int * types
 [@@deriving show]
 
-type expr = { kind : expr_kind; ty : types }
+let rec t = function
+  | TInt -> i64_type ce_ctx
+  | TFloat -> double_type ce_ctx
+  | TBool -> i1_type ce_ctx
+  | TString -> pointer_type ce_ctx
+  | TVoid -> void_type ce_ctx
+  | TArray (n, inner) -> array_type (t inner) n
+  | _ -> failwith "Codegen error: TypeUnknown reached LLVM backend"
 
-and expr_kind =
+type expr =
   | Void
   | String of string
   | Bool of bool
@@ -49,8 +62,7 @@ and stmt =
   | Break
   | Import of string list
 
-let rec to_string e : string =
-  match e.kind with
+let rec to_string = function
   | Void -> ""
   | String s -> s
   | Bool b -> string_of_bool b

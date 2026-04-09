@@ -12,13 +12,13 @@ let dump (code : opcode array)
       (fun (name, params, ty, _body) ->
         let type_str =
           match ty with
-          | TypeInt -> "int"
-          | TypeFloat -> "float"
-          | TypeVoid -> "void"
-          | TypeString -> "string"
-          | TypeBool -> "bool"
-          | TypeUnknown -> "unknown"
-          | TypeArray (length, ty) ->
+          | TInt -> "int"
+          | TFloat -> "float"
+          | TVoid -> "void"
+          | TString -> "string"
+          | TBool -> "bool"
+          | TUnknown -> "unknown"
+          | TArray (length, ty) ->
               Printf.sprintf "[%d]%s" length (show_types ty)
         in
         Printf.printf "Function: %s -> %s\n" name type_str;

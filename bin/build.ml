@@ -1,7 +1,7 @@
-open Ce_compiler
+(* open Ce_compiler *)
+(* open Ce_linker *)
 open Ce_parser
 open Ce_lexer
-open Ce_linker
 open Cmdliner
 
 let read file = In_channel.with_open_text file In_channel.input_all
@@ -19,11 +19,11 @@ let parse src =
          (Printf.sprintf "Parse error at line %d, column %d, near token '%s'"
             line col token))
 
-let format_position pos =
-  let line = pos.Lexing.pos_lnum in
-  let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol in
-  Printf.sprintf "line %d, column %d" line col
-
+(* let format_position pos = *)
+(*   let line = pos.Lexing.pos_lnum in *)
+(*   let col = pos.Lexing.pos_cnum - pos.Lexing.pos_bol in *)
+(*   Printf.sprintf "line %d, column %d" line col *)
+(**)
 let remove_extension filename =
   match String.rindex_opt filename '.' with
   | Some dot_index -> String.sub filename 0 dot_index
@@ -37,56 +37,48 @@ let path_of_module_path parts =
   in
   build_path parts
 
-let rec prefix_expr exports prefix (e : Ast.expr) : Ast.expr =
-  let kind =
-    match e.kind with
-    | Ast.Add (l, r) ->
-        Ast.Add (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Sub (l, r) ->
-        Ast.Sub (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Mul (l, r) ->
-        Ast.Mul (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Div (l, r) ->
-        Ast.Div (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Eq (l, r) ->
-        Ast.Eq (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Lt (l, r) ->
-        Ast.Lt (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Lte (l, r) ->
-        Ast.Lte (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Gt (l, r) ->
-        Ast.Gt (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Gte (l, r) ->
-        Ast.Gte (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.And (l, r) ->
-        Ast.And (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Or (l, r) ->
-        Ast.Or (prefix_expr exports prefix l, prefix_expr exports prefix r)
-    | Ast.Neg e -> Ast.Neg (prefix_expr exports prefix e)
-    | Ast.Call (name, args) ->
-        let new_name =
-          if Hashtbl.mem exports name then prefix ^ name else name
-        in
-        Ast.Call (new_name, List.map (prefix_expr exports prefix) args)
-    | Ast.Let name ->
-        let new_name =
-          if Hashtbl.mem exports name then prefix ^ name else name
-        in
-        Ast.Let new_name
-    | Ast.Array (n, ty, elems) ->
-        Ast.Array (n, ty, List.map (prefix_expr exports prefix) elems)
-    | Ast.If (cond, then_body, elifs, else_body) ->
-        let p_stmt = prefix_stmt exports prefix in
-        Ast.If
-          ( prefix_expr exports prefix cond,
-            List.map p_stmt then_body,
-            List.map
-              (fun (c, b) -> (prefix_expr exports prefix c, List.map p_stmt b))
-              elifs,
-            Option.map (List.map p_stmt) else_body )
-    | e -> e
-  in
-  { e with kind }
+let rec prefix_expr exports prefix = function
+  | Ast.Add (l, r) ->
+      Ast.Add (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Sub (l, r) ->
+      Ast.Sub (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Mul (l, r) ->
+      Ast.Mul (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Div (l, r) ->
+      Ast.Div (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Eq (l, r) ->
+      Ast.Eq (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Lt (l, r) ->
+      Ast.Lt (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Lte (l, r) ->
+      Ast.Lte (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Gt (l, r) ->
+      Ast.Gt (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Gte (l, r) ->
+      Ast.Gte (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.And (l, r) ->
+      Ast.And (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Or (l, r) ->
+      Ast.Or (prefix_expr exports prefix l, prefix_expr exports prefix r)
+  | Ast.Neg e -> Ast.Neg (prefix_expr exports prefix e)
+  | Ast.Call (name, args) ->
+      let new_name = if Hashtbl.mem exports name then prefix ^ name else name in
+      Ast.Call (new_name, List.map (prefix_expr exports prefix) args)
+  | Ast.Let name ->
+      let new_name = if Hashtbl.mem exports name then prefix ^ name else name in
+      Ast.Let new_name
+  | Ast.Array (n, ty, elems) ->
+      Ast.Array (n, ty, List.map (prefix_expr exports prefix) elems)
+  | Ast.If (cond, then_body, elifs, else_body) ->
+      let p_stmt = prefix_stmt exports prefix in
+      Ast.If
+        ( prefix_expr exports prefix cond,
+          List.map p_stmt then_body,
+          List.map
+            (fun (c, b) -> (prefix_expr exports prefix c, List.map p_stmt b))
+            elifs,
+          Option.map (List.map p_stmt) else_body )
+  | e -> e
 
 and prefix_stmt exports prefix = function
   | Ce_parser.Ast.Expr e -> Ce_parser.Ast.Expr (prefix_expr exports prefix e)
@@ -165,11 +157,11 @@ let rec parse_file visited filepath =
 
 let execute file =
   let binary_name = remove_extension file in
-  let visited = Hashtbl.create 10 in
-  let ast = parse_file visited file in
-  let _ =
-    ast |> Typer.check_program |> Compiler.compile |> Linker.export binary_name
-  in
+  (* let visited = Hashtbl.create 10 in *)
+  (* let ast = parse_file visited file in *)
+  (* let _ = *)
+  (*   ast |> Typer.check_program |> Compiler.compile |> Linker.export binary_name *)
+  (* in *)
   Printf.printf "Compiled and linked: %s\n" binary_name
 
 let command =

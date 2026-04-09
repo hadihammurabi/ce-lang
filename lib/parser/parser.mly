@@ -42,7 +42,7 @@ block:
 stmt_if:
   | IF e = expr body = block tail = stmt_if_tail
     { let (elif_branches, else_body) = tail in 
-      Astype.unknown( If (e, body, elif_branches, else_body) ) }
+      ( If (e, body, elif_branches, else_body) ) }
 
 stmt_if_tail:
   | { ([], None) }
@@ -59,20 +59,20 @@ def_let:
   | LET MUT name = IDENT ty = types EQUALS e = expr { DefLet (name, true, ty, e) }
 
 type_scalar:
-  | TYPE_VOID  { TypeVoid }
-  | TYPE_STRING{ TypeString }
-  | TYPE_BOOL  { TypeBool }
-  | TYPE_INT   { TypeInt }
-  | TYPE_FLOAT { TypeFloat }
+  | TYPE_VOID  { TVoid }
+  | TYPE_STRING{ TString }
+  | TYPE_BOOL  { TBool }
+  | TYPE_INT   { TInt }
+  | TYPE_FLOAT { TFloat }
 
 types:
   | t = type_scalar                       { t }
-  | LBRACKET n = INT RBRACKET ty = types  { TypeArray (n, ty) }
+  | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
     LBRACE elems = separated_list(COMMA, expr) RBRACE
-    { Astype.unknown( Array (n, t, elems) ) }
+    {  Array (n, t, elems) }
 
 param:
   | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
@@ -92,28 +92,28 @@ path:
 expr_simple:
   | a = array                                                     { a }
   | LPAREN e = expr RPAREN                                        { e }
-  | TRUE                                                          { Astype.bool(true) }
-  | FALSE                                                         { Astype.bool(false) }
-  | n = INT                                                       { Astype.int(n) }
-  | f = FLOAT                                                     { Astype.float(f) }
-  | s = STRING                                                    { Astype.string(s) }
-  | id = path                                                     { Astype.unknown(Let id) }
-  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Astype.unknown(Call(id, args)) }
-  | MINUS e = expr %prec UMINUS                                   { Astype.unknown( Neg e ) }
+  | TRUE                                                          { Bool true }
+  | FALSE                                                         { Bool false }
+  | n = INT                                                       { Int n }
+  | f = FLOAT                                                     { Float f }
+  | s = STRING                                                    { String s }
+  | id = path                                                     { Let id }
+  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
+  | MINUS e = expr %prec UMINUS                                   {  Neg e  }
 
 expr:
   | e = expr_simple               { e }
-  | l = expr PLUS  r = expr       { Astype.unknown (Add (l, r)) }
-  | l = expr MINUS r = expr       { Astype.unknown (Sub (l, r)) }
-  | l = expr STAR  r = expr       { Astype.unknown (Mul (l, r)) }
-  | l = expr SLASH r = expr       { Astype.unknown (Div (l, r)) }
-  | l = expr MOD   r = expr       { Astype.unknown (Mod (l, r)) }
-  | l = expr EQEQ  r = expr       { Astype.unknown (Eq (l, r)) }
-  | l = expr LT    r = expr       { Astype.unknown (Lt (l, r)) }
-  | l = expr LTE   r = expr       { Astype.unknown (Lte (l, r)) }
-  | l = expr GT    r = expr       { Astype.unknown (Gt (l, r)) }
-  | l = expr GTE   r = expr       { Astype.unknown (Gte (l, r)) }
-  | l = expr AND   r = expr       { Astype.unknown (And (l, r)) }
-  | l = expr OR    r = expr       { Astype.unknown (Or (l, r)) }
+  | l = expr PLUS  r = expr       {  Add (l, r) }
+  | l = expr MINUS r = expr       {  Sub (l, r) }
+  | l = expr STAR  r = expr       {  Mul (l, r) }
+  | l = expr SLASH r = expr       {  Div (l, r) }
+  | l = expr MOD   r = expr       {  Mod (l, r) }
+  | l = expr EQEQ  r = expr       {  Eq (l, r) }
+  | l = expr LT    r = expr       {  Lt (l, r) }
+  | l = expr LTE   r = expr       {  Lte (l, r) }
+  | l = expr GT    r = expr       {  Gt (l, r) }
+  | l = expr GTE   r = expr       {  Gte (l, r) }
+  | l = expr AND   r = expr       {  And (l, r) }
+  | l = expr OR    r = expr       {  Or (l, r) }
   | stmt_if { $1 }
   

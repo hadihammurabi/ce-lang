@@ -5,17 +5,19 @@ open Cmdliner
 let execute file bytecode =
   let visited = Hashtbl.create 10 in
   let ast = Build.parse_file visited file in
-  let base_name = String.sub file 0 (String.rindex file '.') in
-  let c_file = base_name ^ ".c" in
+  (* let base_name = String.sub file 0 (String.rindex file '.') in *)
+  (* let c_file = base_name ^ ".c" in *)
   try
-    let prog = ast |> Typer.check_program |> Compiler.compile in
-    if bytecode then
-      let _ =
-        Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals
-      in
-      let _ = c_file |> Build.read |> print_endline in
-      Linker.cleanup_temp c_file
-    else Debug.dump prog.code prog.functions
+    let prog = ast |> Compiler.compile in
+    Compiler.dump prog
+    (* if bytecode then *)
+    (* let _ = *)
+    (* Bytecode.write_c_wrapper c_file prog.code prog.functions prog.globals *)
+    (* in *)
+    (* let _ = c_file |> Build.read |> print_endline in *)
+    (* Linker.cleanup_temp c_file *)
+    (* else Debug.dump prog.code prog.functions *)
+    (* Debug.dump prog.code prog.functions *)
   with Failure msg ->
     Printf.printf "Error: %s\n" msg;
     exit 1
