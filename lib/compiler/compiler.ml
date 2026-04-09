@@ -1,160 +1,7 @@
-open Ce_parser
-open Opcode
-open Llvm
-
-(* type ctx = { *)
-(*   mutable code : opcode list; *)
-(*   mutable functions : *)
-(*     (string * Ast.param list * Ast.types * Ast.stmt list) list; *)
-(*   mutable globals : (string * bool * Ast.types * Ast.expr) list; *)
-(*   env : (string, bool) Hashtbl.t; *)
-(*   mutable fn_depth : int; *)
-(* } *)
-(**)
-(* let make_ctx () = *)
-(*   { *)
-(*     code = []; *)
-(*     functions = []; *)
-(*     globals = []; *)
-(*     env = Hashtbl.create 16; *)
-(*     fn_depth = 0; *)
-(*   } *)
-(**)
-(* let emit ctx op = ctx.code <- op :: ctx.code *)
-(* let finish ctx : opcode array = Array.of_list (List.rev ctx.code) *)
-(**)
-(* let register_function ctx name params ty body = *)
-(*   ctx.functions <- (name, params, ty, body) :: ctx.functions *)
-(**)
-(* let rec compile_expr ctx (e : Ast.expr) = *)
-(*   match e.kind with *)
-(*   | Ast.Void -> () *)
-(*   | Ast.Int n -> emit ctx (Push_int n) *)
-(*   | Ast.Float f -> emit ctx (Push_float f) *)
-(*   | Ast.String s -> emit ctx (Push_string s) *)
-(*   | Ast.Bool b -> emit ctx (Push_bool b) *)
-(*   | Ast.Add (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Add *)
-(*   | Ast.Sub (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Sub *)
-(*   | Ast.Mul (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Mul *)
-(*   | Ast.Div (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Div *)
-(*   | Ast.Mod (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Mod *)
-(*   | Ast.Eq (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Eq *)
-(*   | Ast.Lt (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Lt *)
-(*   | Ast.Gt (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Gt *)
-(*   | Ast.Lte (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Lte *)
-(*   | Ast.Gte (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Gte *)
-(*   | Ast.And (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx And *)
-(*   | Ast.Or (l, r) -> *)
-(*       compile_expr ctx l; *)
-(*       compile_expr ctx r; *)
-(*       emit ctx Or *)
-(*   | Ast.Neg e -> *)
-(*       compile_expr ctx e; *)
-(*       emit ctx Neg *)
-(*   | Ast.Call (fn, args) -> *)
-(*       List.iter (compile_expr ctx) args; *)
-(*       emit ctx (Call (fn, List.length args)) *)
-(*   | Ast.Let name -> emit ctx (Let name) *)
-(*   | Ast.Array (n, ty, elems) -> *)
-(*       List.iter (compile_expr ctx) elems; *)
-(*       emit ctx (Push_array (n, ty)) *)
-(*   | Ast.If (cond, then_body, elif_branches, else_body) -> ( *)
-(*       compile_expr ctx cond; *)
-(*       List.iter (compile_stmt ctx) then_body; *)
-(*       List.iter *)
-(*         (fun (econd, ebody) -> *)
-(*           compile_expr ctx econd; *)
-(*           List.iter (compile_stmt ctx) ebody) *)
-(*         elif_branches; *)
-(*       match else_body with *)
-(*       | Some stmts -> List.iter (compile_stmt ctx) stmts *)
-(*       | None -> ()) *)
-(**)
-(* and compile_stmt ctx = function *)
-(*   | Ast.Expr ({ kind = Ast.Call (fn, args); _ } as e) -> *)
-(*       compile_expr ctx e; *)
-(*       ignore e *)
-(*   | Ast.Expr e -> *)
-(*       compile_expr ctx e; *)
-(*       emit ctx Pop *)
-(*   | Ast.DefFN (name, params, ty, body) -> *)
-(*       emit ctx (DefFN (name, params)); *)
-(*       register_function ctx name params ty body; *)
-(**)
-(*       let previous_env = Hashtbl.copy ctx.env in *)
-(*       List.iter (fun p -> Hashtbl.add ctx.env p.Ast.name false) params; *)
-(*       ctx.fn_depth <- ctx.fn_depth + 1; *)
-(*       List.iter (compile_stmt ctx) body; *)
-(*       ctx.fn_depth <- ctx.fn_depth - 1; *)
-(*       Hashtbl.clear ctx.env; *)
-(*       Hashtbl.iter (fun k v -> Hashtbl.add ctx.env k v) previous_env *)
-(*   | Ast.DefLet (name, ismut, ty, value) -> *)
-(*       compile_expr ctx value; *)
-(*       Hashtbl.add ctx.env name ismut; *)
-(*       emit ctx (DefLet (name, ismut)); *)
-(*       if ctx.fn_depth = 0 then *)
-(*         ctx.globals <- (name, ismut, ty, value) :: ctx.globals *)
-(*   | Ast.Assign (name, expr) -> *)
-(*       (match Hashtbl.find_opt ctx.env name with *)
-(*       | None -> failwith (Printf.sprintf "Variable '%s' is not defined" name) *)
-(*       | Some false -> *)
-(*           failwith *)
-(*             (Printf.sprintf *)
-(*                "Cannot assign to immutable variable '%s'. Use 'let mut' \ *)
-(*                 instead." *)
-(*                name) *)
-(*       | Some true -> ()); *)
-(*       compile_expr ctx expr; *)
-(*       emit ctx (Assign name) *)
-(*   | Ast.Return e -> *)
-(*       compile_expr ctx e; *)
-(*       emit ctx Return *)
-(*   | Ast.Block body -> List.iter (compile_stmt ctx) body *)
-(*   | Ast.For body -> List.iter (compile_stmt ctx) body *)
-(*   | Ast.Break -> emit ctx Break *)
-(*   | Ast.Import _ -> () *)
-
 open Llvm
 open Ce_parser.Ast
 
 exception Error of string
-
-let context = global_context ()
-let the_module = create_module context "ce"
-let builder = builder context
 
 let rec llvm_type_of = function
   | TInt -> i64_type ce_ctx
@@ -162,80 +9,233 @@ let rec llvm_type_of = function
   | TBool -> i1_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TString -> pointer_type ce_ctx
-  | _ -> raise (Error "Unsupported type for LLVM backend")
+  | TArray (n, ty) -> array_type (llvm_type_of ty) n
+  | TUnknown -> raise (Error "Cannot compile unknown type")
 
-let named_values : (string, llvalue) Hashtbl.t = Hashtbl.create 10
+let named_values : (string, llvalue * lltype) Hashtbl.t = Hashtbl.create 10
+let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
+let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
 
 let rec codegen_expr = function
-  | Int n -> const_int (i64_type context) n
-  | Float f -> const_float (double_type context) f
-  | Bool b -> const_int (i1_type context) (if b then 1 else 0)
+  | Void -> const_null (void_type ce_ctx)
+  | Int n -> const_int (i64_type ce_ctx) n
+  | Float f -> const_float (double_type ce_ctx) f
+  | Bool b -> const_int (i1_type ce_ctx) (if b then 1 else 0)
+  | String s -> build_global_stringptr s "strtmp" ce_builder
   | Let name -> (
       match Hashtbl.find_opt named_values name with
-      | Some v -> v
+      | Some (v, ty) -> build_load ty v name ce_builder
       | None -> raise (Error ("Unknown variable: " ^ name)))
-  | Add (l, r) -> build_add (codegen_expr l) (codegen_expr r) "addtmp" builder
-  | Call (fn_name, args) ->
-      let callee =
-        match lookup_function fn_name the_module with
-        | Some f -> f
-        | None -> raise (Error ("Unknown function: " ^ fn_name))
-      in
-      let args_val = Array.of_list (List.map codegen_expr args) in
-      build_call (i64_type ce_ctx) callee args_val "calltmp" Ast.ce_builder
-  | _ -> raise (Error "LLVM Codegen not implemented for this expression")
+  | Add (l, r) ->
+      build_add (codegen_expr l) (codegen_expr r) "addtmp" ce_builder
+  | Sub (l, r) ->
+      build_sub (codegen_expr l) (codegen_expr r) "subtmp" ce_builder
+  | Mul (l, r) ->
+      build_mul (codegen_expr l) (codegen_expr r) "multmp" ce_builder
+  | Div (l, r) ->
+      build_sdiv (codegen_expr l) (codegen_expr r) "divtmp" ce_builder
+  | Mod (l, r) ->
+      build_srem (codegen_expr l) (codegen_expr r) "modtmp" ce_builder
+  | Eq (l, r) ->
+      build_icmp Icmp.Eq (codegen_expr l) (codegen_expr r) "eqtmp" ce_builder
+  | Lt (l, r) ->
+      build_icmp Icmp.Slt (codegen_expr l) (codegen_expr r) "lttmp" ce_builder
+  | Lte (l, r) ->
+      build_icmp Icmp.Sle (codegen_expr l) (codegen_expr r) "ltetmp" ce_builder
+  | Gt (l, r) ->
+      build_icmp Icmp.Sgt (codegen_expr l) (codegen_expr r) "gttmp" ce_builder
+  | Gte (l, r) ->
+      build_icmp Icmp.Sge (codegen_expr l) (codegen_expr r) "gtetmp" ce_builder
+  | And (l, r) ->
+      build_and (codegen_expr l) (codegen_expr r) "andtmp" ce_builder
+  | Or (l, r) -> build_or (codegen_expr l) (codegen_expr r) "ortmp" ce_builder
+  | Neg e -> build_neg (codegen_expr e) "negtmp" ce_builder
+  | Call (fn_name, args) -> (
+      let arg_vals = List.map codegen_expr args in
+      match Builtin.get fn_name with
+      | Some builtin_fn ->
+          builtin_fn ce_ctx ce_module ce_builder fn_name arg_vals
+      | None ->
+          let callee =
+            match lookup_function fn_name ce_module with
+            | Some f -> f
+            | None -> raise (Error ("Unknown function: " ^ fn_name))
+          in
+          let ft =
+            match Hashtbl.find_opt function_types fn_name with
+            | Some t -> t
+            | None -> raise (Error ("Unknown function type for: " ^ fn_name))
+          in
+          let args_val = Array.of_list (List.map codegen_expr args) in
+          build_call ft callee args_val "calltmp" ce_builder)
+  | Array (n, ty, elems) ->
+      let elem_ty = llvm_type_of ty in
+      let arr_ty = array_type elem_ty n in
+      let arr_alloc = build_alloca arr_ty "arrtmp" ce_builder in
+      List.iteri
+        (fun i e ->
+          let e_val = codegen_expr e in
+          let idx =
+            [| const_int (i32_type ce_ctx) 0; const_int (i32_type ce_ctx) i |]
+          in
+          let ptr = build_gep arr_ty arr_alloc idx "elemtmp" ce_builder in
+          ignore (build_store e_val ptr ce_builder))
+        elems;
+      build_load arr_ty arr_alloc "arrload" ce_builder
+  | If (cond, then_body, elif_branches, else_body) ->
+      let the_function = block_parent (insertion_block ce_builder) in
+      let merge_bb = append_block ce_ctx "ifcont" the_function in
 
-let rec codegen_stmt = function
-  | DefLet (name, _, ty, expr) ->
+      let codegen_block_yield stmts =
+        let rec aux = function
+          | [] -> const_null (void_type ce_ctx)
+          | [ Expr e ] -> codegen_expr e
+          | s :: rest ->
+              ignore (codegen_stmt s);
+              aux rest
+        in
+        aux stmts
+      in
+
+      let phi_incoming = ref [] in
+      let rec build_if c body rest_elifs else_b =
+        let cond_val = codegen_expr c in
+        let then_bb = append_block ce_ctx "then" the_function in
+        let next_bb = append_block ce_ctx "else_or_elif" the_function in
+
+        ignore (build_cond_br cond_val then_bb next_bb ce_builder);
+        position_at_end then_bb ce_builder;
+
+        let then_val = codegen_block_yield body in
+        let then_bb_end = insertion_block ce_builder in
+
+        (match block_terminator then_bb_end with
+        | None ->
+            ignore (build_br merge_bb ce_builder);
+            phi_incoming := (then_val, then_bb_end) :: !phi_incoming
+        | Some _ -> ());
+
+        position_at_end next_bb ce_builder;
+        match rest_elifs with
+        | (elif_c, elif_body) :: rest -> build_if elif_c elif_body rest else_b
+        | [] -> (
+            let else_val =
+              match else_b with
+              | Some stmts -> codegen_block_yield stmts
+              | None -> const_null (void_type ce_ctx)
+            in
+            let else_bb_end = insertion_block ce_builder in
+            match block_terminator else_bb_end with
+            | None ->
+                ignore (build_br merge_bb ce_builder);
+                phi_incoming := (else_val, else_bb_end) :: !phi_incoming
+            | Some _ -> ())
+      in
+
+      build_if cond then_body elif_branches else_body;
+
+      position_at_end merge_bb ce_builder;
+      let incoming = List.rev !phi_incoming in
+
+      if incoming = [] then const_null (void_type ce_ctx)
+      else
+        let first_val, _ = List.hd incoming in
+        let ty = type_of first_val in
+
+        if ty = void_type ce_ctx then const_null (void_type ce_ctx)
+        else build_phi incoming "iftmp" ce_builder
+
+and codegen_stmt = function
+  | Expr e ->
+      ignore (codegen_expr e);
+      const_null (void_type ce_ctx)
+  | DefLet (name, _ismut, ty, expr) ->
+      let init_val = codegen_expr expr in
+      let the_function = block_parent (insertion_block ce_builder) in
+      let ce_builder_alloca =
+        builder_at ce_ctx (instr_begin (entry_block the_function))
+      in
+
+      let ll_ty = llvm_type_of ty in
+      let alloca = build_alloca ll_ty name ce_builder_alloca in
+      ignore (build_store init_val alloca ce_builder);
+
+      Hashtbl.add named_values name (alloca, ll_ty);
+      alloca
+  | Assign (name, expr) ->
       let val_ = codegen_expr expr in
-      Hashtbl.add named_values name val_;
+      let var_ptr =
+        match Hashtbl.find_opt named_values name with
+        | Some (v, _) -> v
+        | None -> raise (Error ("Variable not defined for assignment: " ^ name))
+      in
+      ignore (build_store val_ var_ptr ce_builder);
       val_
   | DefFN (name, params, ret_ty, body) ->
       let param_types =
         Array.of_list (List.map (fun p -> llvm_type_of p.ty) params)
       in
       let ft = function_type (llvm_type_of ret_ty) param_types in
-      let f = declare_function name ft the_module in
-      let bb = append_block context "entry" f in
-      position_at_end bb builder;
+      Hashtbl.add function_types name ft;
 
+      let f = declare_function name ft ce_module in
+      let bb = append_block ce_ctx "entry" f in
+      position_at_end bb ce_builder;
+
+      let old_named_values = Hashtbl.copy named_values in
       Array.iteri
         (fun i a ->
           let n = (List.nth params i).name in
-          set_value_name n a;
-          Hashtbl.add named_values n a)
+          let p_ty = llvm_type_of (List.nth params i).ty in
+          let alloca = build_alloca p_ty n ce_builder in
+          ignore (build_store a alloca ce_builder);
+          Hashtbl.add named_values n (alloca, p_ty))
         (Llvm.params f);
 
       List.iter (fun s -> ignore (codegen_stmt s)) body;
+
+      let current_bb = insertion_block ce_builder in
+      (match block_terminator current_bb with
+      | Some _ -> ()
+      | None ->
+          if ret_ty = TVoid then ignore (build_ret_void ce_builder)
+          else
+            raise
+              (Error ("Function '" ^ name ^ "' is missing a return statement")));
+
+      Hashtbl.clear named_values;
+      Hashtbl.iter (fun k v -> Hashtbl.add named_values k v) old_named_values;
       f
-  | Return e -> build_ret (codegen_expr e) builder
-  (* | _ -> raise (Error "LLVM Codegen not implemented for this statement") *)
-  | _ -> const_null (void_type Ast.ce_ctx)
+  | Block stmts ->
+      List.iter (fun s -> ignore (codegen_stmt s)) stmts;
+      const_null (void_type ce_ctx)
+  | For stmts ->
+      let the_function = block_parent (insertion_block ce_builder) in
+      let loop_bb = append_block ce_ctx "loop" the_function in
+      let after_bb = append_block ce_ctx "afterloop" the_function in
+
+      ignore (build_br loop_bb ce_builder);
+      position_at_end loop_bb ce_builder;
+
+      Stack.push after_bb loop_exit_blocks;
+      List.iter (fun s -> ignore (codegen_stmt s)) stmts;
+      ignore (build_br loop_bb ce_builder);
+      ignore (Stack.pop loop_exit_blocks);
+
+      position_at_end after_bb ce_builder;
+      const_null (void_type ce_ctx)
+  | Break ->
+      if Stack.is_empty loop_exit_blocks then
+        raise (Error "Break outside of a loop");
+      let exit_block = Stack.top loop_exit_blocks in
+      ignore (build_br exit_block ce_builder);
+      const_null (void_type ce_ctx)
+  | Return e -> build_ret (codegen_expr e) ce_builder
+  | Import _ -> const_null (void_type ce_ctx)
 
 let compile (stmts : stmt list) =
   List.iter (fun s -> ignore (codegen_stmt s)) stmts;
-  the_module
-
-(* let compile (stmts : Ast.stmt list) : program = *)
-(*   let ctx = make_ctx () in *)
-(*   List.iter (compile_stmt ctx) stmts; *)
-(*   emit ctx Halt; *)
-(*   { *)
-(*     code = finish ctx; *)
-(*     functions = ctx.functions; *)
-(*     globals = List.rev ctx.globals; *)
-(*   } *)
-
-(* let compile_expr_to_program (expr : Ast.expr) : Opcode.program = *)
-(*   let ctx = make_ctx () in *)
-(*   compile_expr ctx expr; *)
-(*   emit ctx Pop; *)
-(*   emit ctx Halt; *)
-(*   { *)
-(*     code = finish ctx; *)
-(*     functions = ctx.functions; *)
-(*     globals = List.rev ctx.globals; *)
-(*   } *)
+  ce_module
 
 let dump m =
   let module_string = string_of_llmodule m in
