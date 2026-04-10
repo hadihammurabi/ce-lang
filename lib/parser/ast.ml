@@ -11,6 +11,7 @@ type types =
   | TChar
   | TPointer of types
   | TNamed of string
+  | TStruct of string
   | TInt
   | TFloat
   | TUnknown
@@ -59,12 +60,14 @@ type expr =
 [@@deriving show]
 
 and param = { name : string; ty : types }
+and struct_field = { name : string; ty : types; tag : string }
 
 and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
   | DefLet of string * bool * types * expr
   | DefType of string * types
+  | DefStruct of string * struct_field list
   | Assign of string * expr
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr

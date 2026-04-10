@@ -6,6 +6,10 @@ exception Error of string
 let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
 let named_values : (string, llvalue * types) Hashtbl.t = Hashtbl.create 10
 let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
+
+let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
+  Hashtbl.create 10
+
 let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
 
 let rec llvm_type_of = function
@@ -21,6 +25,9 @@ let rec llvm_type_of = function
       match Hashtbl.find_opt type_aliases name with
       | Some actual_ty -> llvm_type_of actual_ty
       | None -> raise (Error ("Undefined type: " ^ name)))
+  | TStruct name ->
+      let llty, _ = Hashtbl.find struct_registry name in
+      llty
   | TUnknown -> raise (Error "Cannot compile unknown type")
 
 let rec codegen_expr = function
@@ -243,6 +250,16 @@ and codegen_stmt = function
       alloca
   | DefType (name, underlying_ty) ->
       Hashtbl.add type_aliases name underlying_ty;
+      const_null (void_type ce_ctx)
+  | DefStruct (name, fields) ->
+      let field_types =
+        Array.of_list (List.map (fun f -> llvm_type_of f.ty) fields)
+      in
+      let struct_llty = named_struct_type ce_ctx name in
+      struct_set_body struct_llty field_types false;
+
+      let field_map = List.mapi (fun i f -> (f.name, i)) fields in
+      Hashtbl.add struct_registry name (struct_llty, field_map);
       const_null (void_type ce_ctx)
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in

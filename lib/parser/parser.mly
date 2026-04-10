@@ -38,6 +38,7 @@ stmt:
   | def_fn          { $1 }
   | def_let         { $1 }
   | def_type        { $1 }
+  | def_struct      { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
   | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
   | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
@@ -92,7 +93,7 @@ array:
     {  Array (n, t, elems) }
 
 param:
-  | name = IDENT ty = types { Ast.{ name = name; ty = ty } }
+  | name = IDENT ty = types { { name = name; ty = ty } }
 
 def_fn:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
@@ -100,6 +101,18 @@ def_fn:
 
 def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
+
+def_struct:
+  | TYPE name = IDENT LBRACE fields = struct_fields RBRACE 
+    { DefStruct (name, fields) }
+
+struct_fields:
+  | /* empty */ { [] }
+  | f = struct_field sep_opt { [f] }
+  | f = struct_field sep fields = struct_fields { f :: fields }
+
+struct_field:
+  | name = IDENT ty = types { { name = name; ty = ty } }
 
 module_path:
   | IDENT { [$1] }
