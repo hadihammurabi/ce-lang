@@ -77,3 +77,4 @@ and stmt =
   | For of stmt list
   | Break
   | Import of string list
+  | Impl of string * (string * string * types * stmt list) list

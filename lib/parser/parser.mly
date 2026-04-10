@@ -8,7 +8,7 @@
 %token <char>   CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP SEMICOLON
-%token          EOF RETURN IMPORT BREAK NEWLINE TYPE
+%token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
@@ -31,7 +31,7 @@ sep:
   | sep NEWLINE   { () }
 
 sep_opt:
-  | /* empty */   { () }
+  |   { () }
   | sep           { () }
 
 stmt:
@@ -48,6 +48,8 @@ stmt:
   | expr            { Expr $1 }
   | FOR body = block { For body }
   | IMPORT path = module_path { Import path }
+  | IMPL struct_name = IDENT LBRACE sep_opt methods = impl_method_list RBRACE
+    { Impl (struct_name, methods) }
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -133,6 +135,14 @@ module_path:
 path:
   | id = IDENT { id }
   | id = IDENT DOT p = path { id ^ "." ^ p }
+
+impl_method_list:
+  |  { [] }
+  | m = impl_method sep_opt rest = impl_method_list { m :: rest }
+
+impl_method:
+  | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
+    { (name, self_id, ret_ty, body) }
 
 expr_simple:
   | a = array                                                     { a }

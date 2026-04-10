@@ -61,7 +61,8 @@ rule tokenize = parse
   | "char"             { expr_end TYPE_CHAR }
   | "void"             { expr_end TYPE_VOID }   
   | "import"           { expr_cont IMPORT }
-  | "type"               { expr_cont TYPE }
+  | "type"             { expr_cont TYPE }
+  | "impl"             { expr_cont IMPL }
   | alpha alnum* { expr_end (IDENT (Lexing.lexeme lexbuf)) }
 
   | '"'                { 
