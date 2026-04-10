@@ -5,10 +5,10 @@
 %token <int>    INT
 %token <float>  FLOAT
 %token <string> STRING IDENT
-%token <char> CHAR
+%token <char>   CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP
-%token          EOF RETURN IMPORT BREAK NEWLINE
+%token          EOF RETURN IMPORT BREAK NEWLINE TYPE
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
@@ -37,6 +37,7 @@ sep_opt:
 stmt:
   | def_fn          { $1 }
   | def_let         { $1 }
+  | def_type        { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
   | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
   | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
@@ -78,6 +79,7 @@ type_scalar:
   | TYPE_BOOL  { TBool }
   | TYPE_INT   { TInt }
   | TYPE_FLOAT { TFloat }
+  | id = IDENT { TNamed id }
 
 types:
   | t = type_scalar                       { t }
@@ -95,6 +97,9 @@ param:
 def_fn:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
     { DefFN (name, params, ty, body) }
+
+def_type:
+  | TYPE name = IDENT ty = types { DefType (name, ty) }
 
 module_path:
   | IDENT { [$1] }

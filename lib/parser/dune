@@ -1,6 +1,13 @@
 (library
  (name ce_parser)
- (libraries menhirLib ppx_deriving.show ppx_deriving.eq llvm llvm.analysis llvm.target llvm.all_backends)
+ (libraries
+  menhirLib
+  ppx_deriving.show
+  ppx_deriving.eq
+  llvm
+  llvm.analysis
+  llvm.target
+  llvm.all_backends)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 

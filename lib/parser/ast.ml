@@ -10,6 +10,7 @@ type types =
   | TString
   | TChar
   | TPointer of types
+  | TNamed of string
   | TInt
   | TFloat
   | TUnknown
@@ -63,6 +64,7 @@ and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
   | DefLet of string * bool * types * expr
+  | DefType of string * types
   | Assign of string * expr
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr
