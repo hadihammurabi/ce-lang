@@ -6,8 +6,16 @@ exception Error of string
 let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
 let named_values : (string, llvalue * types) Hashtbl.t = Hashtbl.create 10
 let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
-let struct_templates : (string, (string * types) list * struct_field list) Hashtbl.t = Hashtbl.create 10
-let impl_templates : (string, (string * types) list * (string * string * types * stmt list) list) Hashtbl.t = Hashtbl.create 10
+
+let struct_templates :
+    (string, (string * types) list * struct_field list) Hashtbl.t =
+  Hashtbl.create 10
+
+let impl_templates :
+    ( string,
+      (string * types) list * (string * string * types * stmt list) list )
+    Hashtbl.t =
+  Hashtbl.create 10
 
 let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
   Hashtbl.create 10
@@ -15,10 +23,14 @@ let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
 let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
 
 let rec substitute_type type_map = function
-  | TGenericParam name -> (try List.assoc name type_map with Not_found -> TGenericParam name)
+  | TGenericParam name -> (
+      try List.assoc name type_map with Not_found -> TGenericParam name)
+  | TNamed name -> (
+      try List.assoc name type_map with Not_found -> TNamed name)
   | TPointer ty -> TPointer (substitute_type type_map ty)
   | TArray (n, ty) -> TArray (n, substitute_type type_map ty)
-  | TGenericInst (name, args) -> TGenericInst (name, List.map (substitute_type type_map) args)
+  | TGenericInst (name, args) ->
+      TGenericInst (name, List.map (substitute_type type_map) args)
   | other -> other
 
 let rec llvm_type_of = function
@@ -41,31 +53,60 @@ let rec llvm_type_of = function
       let llty, _ = Hashtbl.find struct_registry name in
       llty
   | TUnknown -> raise (Error "Cannot compile unknown type")
-  | TGenericParam name -> raise (Error ("Uninstantiated generic parameter '" ^ name))
-  | TGenericInst (name, arg_types) ->
-      let mangled_name = name ^ "_" ^ (String.concat "_" (List.map show_types arg_types)) in
-      (match Hashtbl.find_opt struct_registry mangled_name with
+  | TGenericParam name ->
+      raise (Error ("Uninstantiated generic parameter '" ^ name))
+  | TGenericInst (name, arg_types) -> (
+      let mangled_name =
+        name ^ "_" ^ String.concat "_" (List.map show_types arg_types)
+      in
+      match Hashtbl.find_opt struct_registry mangled_name with
       | Some (llty, _) -> llty
       | None ->
-          let (params, fields) = Hashtbl.find struct_templates name in
-          let type_map = List.map2 (fun (p_name, _) arg_ty -> (p_name, arg_ty)) params arg_types in
-          let specialized_fields = List.map (fun f -> 
-              { field_name = f.field_name; ty = substitute_type type_map f.ty }
-          ) fields in
-          
-          ignore (codegen_stmt (DefStruct (mangled_name, [], specialized_fields)));
-          
+          (* 1. SAVE THE CURRENT BUILDER POSITION *)
+          let saved_bb =
+            try Some (insertion_block ce_builder) with Not_found -> None
+          in
+
+          let params, fields = Hashtbl.find struct_templates name in
+          let type_map =
+            List.map2
+              (fun (p_name, _) arg_ty -> (p_name, arg_ty))
+              params arg_types
+          in
+
+          let specialized_fields =
+            List.map
+              (fun f ->
+                {
+                  field_name = f.field_name;
+                  ty = substitute_type type_map f.ty;
+                })
+              fields
+          in
+
+          ignore
+            (codegen_stmt (DefStruct (mangled_name, [], specialized_fields)));
+
           (match Hashtbl.find_opt impl_templates name with
           | Some (_, methods) ->
-              let specialized_methods = List.map (fun (m_name, self_id, ret_ty, body) ->
-                  (m_name, self_id, substitute_type type_map ret_ty, body)
-              ) methods in
-              ignore (codegen_stmt (Impl (mangled_name, [], specialized_methods)))
+              let specialized_methods =
+                List.map
+                  (fun (m_name, self_id, ret_ty, body) ->
+                    (m_name, self_id, substitute_type type_map ret_ty, body))
+                  methods
+              in
+              ignore
+                (codegen_stmt (Impl (mangled_name, [], specialized_methods)))
+          | None -> ());
+
+          (* 2. RESTORE THE BUILDER POSITION *)
+          (match saved_bb with
+          | Some bb -> position_at_end bb ce_builder
           | None -> ());
 
           fst (Hashtbl.find struct_registry mangled_name))
 
-        and codegen_expr = function
+and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
   | Int n -> const_int (i64_type ce_ctx) n
   | Float f -> const_float (double_type ce_ctx) f
@@ -391,9 +432,13 @@ let rec llvm_type_of = function
         if ty = void_type ce_ctx then const_null (void_type ce_ctx)
         else build_phi incoming "iftmp" ce_builder
   | Struct (name, type_args, fields) ->
-      let mangled_name = 
-        if type_args = [] then name 
-        else name ^ "_" ^ (String.concat "_" (List.map show_types type_args)) 
+      if type_args <> [] then begin
+        ignore (llvm_type_of (TGenericInst (name, type_args)))
+      end;
+
+      let mangled_name =
+        if type_args = [] then name
+        else name ^ "_" ^ String.concat "_" (List.map show_types type_args)
       in
       let llty, field_map = Hashtbl.find struct_registry mangled_name in
       let alloc = build_alloca llty "structtmp" ce_builder in
@@ -404,7 +449,7 @@ let rec llvm_type_of = function
           let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
           ignore (build_store (codegen_expr fexpr) fptr ce_builder))
         fields;
-        
+
       build_load llty alloc "structload" ce_builder
 
 and codegen_stmt = function
@@ -429,18 +474,19 @@ and codegen_stmt = function
       const_null (void_type ce_ctx)
   | DefStruct (name, params, fields) ->
       if List.length params > 0 then begin
-          Hashtbl.add struct_templates name (params, fields);
-          const_null (void_type ce_ctx)
-      end else begin
-      let field_types =
-        Array.of_list (List.map (fun f -> llvm_type_of f.ty) fields)
-      in
-      let struct_llty = named_struct_type ce_ctx name in
-      struct_set_body struct_llty field_types false;
+        Hashtbl.add struct_templates name (params, fields);
+        const_null (void_type ce_ctx)
+      end
+      else begin
+        let field_types =
+          Array.of_list (List.map (fun f -> llvm_type_of f.ty) fields)
+        in
+        let struct_llty = named_struct_type ce_ctx name in
+        struct_set_body struct_llty field_types false;
 
-      let field_map = List.mapi (fun i f -> (f.field_name, i)) fields in
-      Hashtbl.add struct_registry name (struct_llty, field_map);
-      const_null (void_type ce_ctx)
+        let field_map = List.mapi (fun i f -> (f.field_name, i)) fields in
+        Hashtbl.add struct_registry name (struct_llty, field_map);
+        const_null (void_type ce_ctx)
       end
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
@@ -612,18 +658,19 @@ and codegen_stmt = function
   | Import _ -> const_null (void_type ce_ctx)
   | Impl (name, params, methods) ->
       if List.length params > 0 then begin
-          Hashtbl.add impl_templates name (params, methods);
-          const_null (void_type ce_ctx)
-      end else begin
-      List.iter
-        (fun (method_name, self_id, ret_ty, body) ->
-          let mangled_name = name ^ "::" ^ method_name in
-          let self_param = { param_name = self_id; ty = TNamed name } in
-          let params = [ self_param ] in
-          ignore (codegen_stmt (DefFN (mangled_name, params, ret_ty, body))))
-        methods;
+        Hashtbl.add impl_templates name (params, methods);
+        const_null (void_type ce_ctx)
+      end
+      else begin
+        List.iter
+          (fun (method_name, self_id, ret_ty, body) ->
+            let mangled_name = name ^ "::" ^ method_name in
+            let self_param = { param_name = self_id; ty = TNamed name } in
+            let params = [ self_param ] in
+            ignore (codegen_stmt (DefFN (mangled_name, params, ret_ty, body))))
+          methods;
 
-      const_null (void_type ce_ctx)
+        const_null (void_type ce_ctx)
       end
 
 let optimize the_module =

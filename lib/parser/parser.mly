@@ -149,10 +149,6 @@ impl_method:
   | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
     { (name, self_id, ret_ty, body) }
 
-type_args_opt:
-  |  { [] }
-  | LBRACKET ty = types RBRACKET { [ty] }
-
 expr_simple:
   | a = array                                                     { a }
   | LPAREN e = expr RPAREN                                        { e }
@@ -168,8 +164,12 @@ expr_simple:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
-  | name = IDENT targs = type_args_opt LBRACE sep_opt RBRACE      { Struct (name, targs, []) }
-  | name = IDENT targs = type_args_opt LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, targs, fields) }
+  | name = IDENT LBRACE sep_opt RBRACE                            { Struct (name, [], []) }
+  | name = IDENT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, [], fields) }
+  | name = IDENT LBRACKET ty = types RBRACKET LBRACE sep_opt RBRACE
+    { Struct (name, [ty], []) }
+  | name = IDENT LBRACKET ty = types RBRACKET LBRACE sep_opt fields = struct_init_list RBRACE
+    { Struct (name, [ty], fields) }
 
 expr:
   | e = expr_simple               { e }
