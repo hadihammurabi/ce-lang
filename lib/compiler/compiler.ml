@@ -13,7 +13,8 @@ let struct_templates :
 
 let impl_templates :
     ( string,
-      (string * types) list * (string * string * types * stmt list) list )
+      (string * types) list
+      * (string * string * param list * types * stmt list) list )
     Hashtbl.t =
   Hashtbl.create 10
 
@@ -32,6 +33,80 @@ let rec substitute_type type_map = function
   | TGenericInst (name, args) ->
       TGenericInst (name, List.map (substitute_type type_map) args)
   | other -> other
+
+and substitute_expr type_map = function
+  | Array (n, ty, elems) ->
+      Array
+        ( n,
+          substitute_type type_map ty,
+          List.map (substitute_expr type_map) elems )
+  | Struct (name, targs, fields) ->
+      let new_targs = List.map (substitute_type type_map) targs in
+      let new_fields =
+        List.map (fun (n, e) -> (n, substitute_expr type_map e)) fields
+      in
+      Struct (name, new_targs, new_fields)
+  | Add (l, r) -> Add (substitute_expr type_map l, substitute_expr type_map r)
+  | Sub (l, r) -> Sub (substitute_expr type_map l, substitute_expr type_map r)
+  | Mul (l, r) -> Mul (substitute_expr type_map l, substitute_expr type_map r)
+  | Div (l, r) -> Div (substitute_expr type_map l, substitute_expr type_map r)
+  | Mod (l, r) -> Mod (substitute_expr type_map l, substitute_expr type_map r)
+  | Eq (l, r) -> Eq (substitute_expr type_map l, substitute_expr type_map r)
+  | Lt (l, r) -> Lt (substitute_expr type_map l, substitute_expr type_map r)
+  | Lte (l, r) -> Lte (substitute_expr type_map l, substitute_expr type_map r)
+  | Gt (l, r) -> Gt (substitute_expr type_map l, substitute_expr type_map r)
+  | Gte (l, r) -> Gte (substitute_expr type_map l, substitute_expr type_map r)
+  | And (l, r) -> And (substitute_expr type_map l, substitute_expr type_map r)
+  | Or (l, r) -> Or (substitute_expr type_map l, substitute_expr type_map r)
+  | Neg e -> Neg (substitute_expr type_map e)
+  | Ref e -> Ref (substitute_expr type_map e)
+  | Deref e -> Deref (substitute_expr type_map e)
+  | Call (name, args) -> Call (name, List.map (substitute_expr type_map) args)
+  | ArrayAccess (name, idx) -> ArrayAccess (name, substitute_expr type_map idx)
+  | If (cond, then_b, elifs, else_b) ->
+      let s_cond = substitute_expr type_map cond in
+      let s_then = List.map (substitute_stmt type_map) then_b in
+      let s_elifs =
+        List.map
+          (fun (c, b) ->
+            (substitute_expr type_map c, List.map (substitute_stmt type_map) b))
+          elifs
+      in
+      let s_else =
+        match else_b with
+        | None -> None
+        | Some b -> Some (List.map (substitute_stmt type_map) b)
+      in
+      If (s_cond, s_then, s_elifs, s_else)
+  | e -> e
+
+and substitute_stmt type_map = function
+  | Expr e -> Expr (substitute_expr type_map e)
+  | DefLet (name, is_mut, ty, e) ->
+      DefLet
+        (name, is_mut, substitute_type type_map ty, substitute_expr type_map e)
+  | Assign (name, e) -> Assign (name, substitute_expr type_map e)
+  | ArrayAssign (name, idx, e) ->
+      ArrayAssign
+        (name, substitute_expr type_map idx, substitute_expr type_map e)
+  | DerefAssign (ptr, e) ->
+      DerefAssign (substitute_expr type_map ptr, substitute_expr type_map e)
+  | Return e -> Return (substitute_expr type_map e)
+  | Block stmts -> Block (List.map (substitute_stmt type_map) stmts)
+  | For stmts -> For (List.map (substitute_stmt type_map) stmts)
+  | DefFN (name, params, ret_ty, body) ->
+      let s_params =
+        List.map
+          (fun p ->
+            { param_name = p.param_name; ty = substitute_type type_map p.ty })
+          params
+      in
+      DefFN
+        ( name,
+          s_params,
+          substitute_type type_map ret_ty,
+          List.map (substitute_stmt type_map) body )
+  | s -> s
 
 let rec llvm_type_of = function
   | TInt -> i64_type ce_ctx
@@ -62,7 +137,6 @@ let rec llvm_type_of = function
       match Hashtbl.find_opt struct_registry mangled_name with
       | Some (llty, _) -> llty
       | None ->
-          (* 1. SAVE THE CURRENT BUILDER POSITION *)
           let saved_bb =
             try Some (insertion_block ce_builder) with Not_found -> None
           in
@@ -91,15 +165,28 @@ let rec llvm_type_of = function
           | Some (_, methods) ->
               let specialized_methods =
                 List.map
-                  (fun (m_name, self_id, ret_ty, body) ->
-                    (m_name, self_id, substitute_type type_map ret_ty, body))
+                  (fun (m_name, self_id, m_params, ret_ty, body) ->
+                    let sub_params =
+                      List.map
+                        (fun p ->
+                          {
+                            param_name = p.param_name;
+                            ty = substitute_type type_map p.ty;
+                          })
+                        m_params
+                    in
+                    let sub_body = List.map (substitute_stmt type_map) body in
+                    ( m_name,
+                      self_id,
+                      sub_params,
+                      substitute_type type_map ret_ty,
+                      sub_body ))
                   methods
               in
               ignore
                 (codegen_stmt (Impl (mangled_name, [], specialized_methods)))
           | None -> ());
 
-          (* 2. RESTORE THE BUILDER POSITION *)
           (match saved_bb with
           | Some bb -> position_at_end bb ce_builder
           | None -> ());
@@ -209,13 +296,32 @@ and codegen_expr = function
   | Add (l, r) ->
       let lv = codegen_expr l in
       let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
+      let ty_l = classify_type (type_of lv) in
+      let ty_r = classify_type (type_of rv) in
+
+      if ty_l = TypeKind.Pointer && ty_r = TypeKind.Integer then
+        build_in_bounds_gep
+          (element_type (type_of lv))
+          lv [| rv |] "ptraddtmp" ce_builder
+      else if ty_l = TypeKind.Integer && ty_r = TypeKind.Pointer then
+        build_in_bounds_gep
+          (element_type (type_of rv))
+          rv [| lv |] "ptraddtmp" ce_builder
+      else if type_of lv = double_type ce_ctx then
         build_fadd lv rv "faddtmp" ce_builder
       else build_add lv rv "addtmp" ce_builder
   | Sub (l, r) ->
       let lv = codegen_expr l in
       let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
+      let ty_l = classify_type (type_of lv) in
+      let ty_r = classify_type (type_of rv) in
+
+      if ty_l = TypeKind.Pointer && ty_r = TypeKind.Integer then
+        let neg_rv = build_neg rv "negidx" ce_builder in
+        build_in_bounds_gep
+          (element_type (type_of lv))
+          lv [| neg_rv |] "ptrsubtmp" ce_builder
+      else if type_of lv = double_type ce_ctx then
         build_fsub lv rv "fsubtmp" ce_builder
       else build_sub lv rv "subtmp" ce_builder
   | Mul (l, r) ->
@@ -663,13 +769,13 @@ and codegen_stmt = function
       end
       else begin
         List.iter
-          (fun (method_name, self_id, ret_ty, body) ->
+          (fun (method_name, self_id, m_params, ret_ty, body) ->
             let mangled_name = name ^ "::" ^ method_name in
             let self_param = { param_name = self_id; ty = TNamed name } in
-            let params = [ self_param ] in
-            ignore (codegen_stmt (DefFN (mangled_name, params, ret_ty, body))))
+            let all_params = self_param :: m_params in
+            ignore
+              (codegen_stmt (DefFN (mangled_name, all_params, ret_ty, body))))
           methods;
-
         const_null (void_type ce_ctx)
       end
 

@@ -147,7 +147,9 @@ impl_method_list:
 
 impl_method:
   | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
-    { (name, self_id, ret_ty, body) }
+    { (name, self_id, [], ret_ty, body) }
+  | FN name = IDENT LPAREN self_id = IDENT COMMA params = separated_list(COMMA, param) RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
+    { (name, self_id, params, ret_ty, body) }
 
 expr_simple:
   | a = array                                                     { a }

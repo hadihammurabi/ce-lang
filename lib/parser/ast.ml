@@ -71,11 +71,12 @@ and stmt =
   | DefLet of string * bool * types * expr
   | DefType of string * types
   | DefStruct of string * (string * types) list * struct_field list
+  | Assign of string * expr
   | Impl of
       string
       * (string * types) list
-      * (string * string * types * stmt list) list
-  | Assign of string * expr
+      * (string * string * param list * types * stmt list)
+        list
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr
   | Return of expr
