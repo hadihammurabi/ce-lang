@@ -103,11 +103,25 @@ def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
 
 def_struct:
-  | TYPE name = IDENT LBRACE fields = list(terminated(struct_field, SEMICOLON)) RBRACE 
-    { DefStruct (name, fields) }
+  | TYPE name = IDENT LBRACE sep_opt RBRACE { DefStruct (name, []) }
+  | TYPE name = IDENT LBRACE sep_opt fields = struct_field_list RBRACE { DefStruct (name, fields) }
+
+struct_field_list:
+  | f = struct_field                                            { [f] }
+  | f = struct_field SEMICOLON                                  { [f] }
+  | f = struct_field sep                                        { [f] }
+  | f = struct_field SEMICOLON sep_opt rest = struct_field_list { f :: rest }
+  | f = struct_field sep rest = struct_field_list               { f :: rest }
 
 struct_field:
   | name = IDENT ty = types { { field_name = name; ty = ty } }
+
+struct_init_list:
+  | f = struct_init_field                                            { [f] }
+  | f = struct_init_field SEMICOLON                                  { [f] }
+  | f = struct_init_field sep                                        { [f] }
+  | f = struct_init_field SEMICOLON sep_opt rest = struct_init_list  { f :: rest }
+  | f = struct_init_field sep rest = struct_init_list                { f :: rest }
 
 struct_init_field:
   | name = IDENT EQUALS e = expr { (name, e) }
@@ -135,8 +149,8 @@ expr_simple:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
-  | name = IDENT LBRACE fields = separated_list(SEMICOLON, struct_init_field) SEMICOLON? RBRACE
-    { Struct (name, fields) }
+  | name = IDENT LBRACE sep_opt RBRACE                            { Struct (name, []) }
+  | name = IDENT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, fields) }
 
 expr:
   | e = expr_simple               { e }

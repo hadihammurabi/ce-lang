@@ -24,7 +24,10 @@ let rec llvm_type_of = function
   | TNamed name -> (
       match Hashtbl.find_opt type_aliases name with
       | Some actual_ty -> llvm_type_of actual_ty
-      | None -> raise (Error ("Undefined type: " ^ name)))
+      | None -> (
+          match Hashtbl.find_opt struct_registry name with
+          | Some (llty, _) -> llty
+          | None -> raise (Error ("Undefined type: " ^ name))))
   | TStruct name ->
       let llty, _ = Hashtbl.find struct_registry name in
       llty
@@ -230,16 +233,16 @@ let rec codegen_expr = function
         let ty = type_of first_val in
         if ty = void_type ce_ctx then const_null (void_type ce_ctx)
         else build_phi incoming "iftmp" ce_builder
-
   | Struct (name, fields) ->
-    let (llty, field_map) = Hashtbl.find struct_registry name in
-    let alloc = build_alloca llty "structtmp" ce_builder in
-    List.iter (fun (fname, fexpr) ->
-      let fidx = List.assoc fname field_map in
-      let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
-      ignore (build_store (codegen_expr fexpr) fptr ce_builder)
-    ) fields;
-    build_load llty alloc "structload" ce_builder
+      let llty, field_map = Hashtbl.find struct_registry name in
+      let alloc = build_alloca llty "structtmp" ce_builder in
+      List.iter
+        (fun (fname, fexpr) ->
+          let fidx = List.assoc fname field_map in
+          let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
+          ignore (build_store (codegen_expr fexpr) fptr ce_builder))
+        fields;
+      build_load llty alloc "structload" ce_builder
 
 and codegen_stmt = function
   | Expr e ->
@@ -316,7 +319,7 @@ and codegen_stmt = function
   | DerefAssign _ -> raise (Error "Can only assign to variable pointers")
   | DefFN (name, params, ret_ty, body) ->
       let param_types =
-        Array.of_list (List.map (fun (p: param) -> llvm_type_of p.ty) params)
+        Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
       in
       let ft = function_type (llvm_type_of ret_ty) param_types in
       Hashtbl.add function_types name ft;

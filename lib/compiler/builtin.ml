@@ -52,6 +52,22 @@ let get name =
                   "[" ^ String.concat ", " (List.rev !fmt_acc) ^ "]"
                 in
                 (fmt_str, !val_acc)
+            | TypeKind.Struct ->
+                let elem_types = struct_element_types ty in
+                let len = Array.length elem_types in
+                let fmt_acc = ref [] in
+                let val_acc = ref [] in
+
+                for i = 0 to len - 1 do
+                  let elem = build_extractvalue v i "exttmp" builder in
+                  let e_fmt, e_vals = process_arg elem in
+                  fmt_acc := e_fmt :: !fmt_acc;
+                  val_acc := !val_acc @ e_vals
+                done;
+                let fmt_str =
+                  "{" ^ String.concat ", " (List.rev !fmt_acc) ^ "}"
+                in
+                (fmt_str, !val_acc)
             | _ -> ("(complex_type)", [])
           in
 
