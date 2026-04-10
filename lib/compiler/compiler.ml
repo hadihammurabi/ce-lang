@@ -24,6 +24,21 @@ let rec codegen_expr = function
   | Bool b -> const_int (i1_type ce_ctx) (if b then 1 else 0)
   | Char c -> const_int (i8_type ce_ctx) (Char.code c)
   | String s -> build_global_stringptr s "strtmp" ce_builder
+  | ArrayAccess (name, index_expr) ->
+      let array_ptr_val, array_ty =
+        match Hashtbl.find_opt named_values name with
+        | Some (v, ty) -> (v, ty)
+        | None -> raise (Error ("Array '" ^ name ^ "' not found"))
+      in
+
+      let idx_val = codegen_expr index_expr in
+      let zero = const_int (i32_type ce_ctx) 0 in
+      let indices = [| zero; idx_val |] in
+      let element_ptr =
+        build_in_bounds_gep array_ty array_ptr_val indices "arrayidx" ce_builder
+      in
+      let elem_ty = element_type array_ty in
+      build_load elem_ty element_ptr "loadtmp" ce_builder
   | Let name -> (
       match Hashtbl.find_opt named_values name with
       | Some (v, ty) -> build_load ty v name ce_builder

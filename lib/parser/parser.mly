@@ -100,6 +100,7 @@ expr_simple:
   | f = FLOAT                                                     { Float f }
   | s = STRING                                                    { String s }
   | c = CHAR                                                      { Char c }
+  | name = IDENT LBRACKET idx = expr RBRACKET                     { ArrayAccess (name, idx) }
   | id = path                                                     { Let id }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
   | MINUS e = expr %prec UMINUS                                   {  Neg e  }

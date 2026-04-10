@@ -48,6 +48,7 @@ type expr =
   | Call of string * expr list
   | Let of string
   | Array of int * types * expr list
+  | ArrayAccess of string * expr
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
 [@@deriving show]
@@ -73,6 +74,7 @@ let rec to_string = function
   | Int n -> string_of_int n
   | Float f -> string_of_float f
   | Let name -> name
+  | ArrayAccess (name, expr) -> Printf.sprintf "(%s + %s)" name (to_string expr)
   | Add (l, r) -> Printf.sprintf "(%s + %s)" (to_string l) (to_string r)
   | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r)
   | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r)
