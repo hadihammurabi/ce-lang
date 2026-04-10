@@ -97,6 +97,9 @@ and namespace_stmt prefix decls = function
   | DefLet (name, is_mut, ty, e) ->
       DefLet (name, is_mut, ty, namespace_expr prefix decls e)
   | Assign (name, e) -> Assign (name, namespace_expr prefix decls e)
+  | ArrayAssign (name, idx, e) ->
+      ArrayAssign
+        (name, namespace_expr prefix decls idx, namespace_expr prefix decls e)
   | Return e -> Return (namespace_expr prefix decls e)
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
   | For stmts -> For (List.map (namespace_stmt prefix decls) stmts)

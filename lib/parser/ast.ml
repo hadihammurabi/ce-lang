@@ -60,37 +60,9 @@ and stmt =
   | DefFN of string * param list * types * stmt list
   | DefLet of string * bool * types * expr
   | Assign of string * expr
+  | ArrayAssign of string * expr * expr
   | Return of expr
   | Block of stmt list
   | For of stmt list
   | Break
   | Import of string list
-
-let rec to_string = function
-  | Void -> ""
-  | String s -> s
-  | Char c -> Printf.sprintf "'%c'" c
-  | Bool b -> string_of_bool b
-  | Int n -> string_of_int n
-  | Float f -> string_of_float f
-  | Let name -> name
-  | ArrayAccess (name, expr) -> Printf.sprintf "(%s + %s)" name (to_string expr)
-  | Add (l, r) -> Printf.sprintf "(%s + %s)" (to_string l) (to_string r)
-  | Sub (l, r) -> Printf.sprintf "(%s - %s)" (to_string l) (to_string r)
-  | Mul (l, r) -> Printf.sprintf "(%s * %s)" (to_string l) (to_string r)
-  | Div (l, r) -> Printf.sprintf "(%s / %s)" (to_string l) (to_string r)
-  | Mod (l, r) -> Printf.sprintf "(%s %% %s)" (to_string l) (to_string r)
-  | Eq (l, r) -> Printf.sprintf "(%s == %s)" (to_string l) (to_string r)
-  | Lt (l, r) -> Printf.sprintf "(%s < %s)" (to_string l) (to_string r)
-  | Lte (l, r) -> Printf.sprintf "(%s <= %s)" (to_string l) (to_string r)
-  | Gt (l, r) -> Printf.sprintf "(%s > %s)" (to_string l) (to_string r)
-  | Gte (l, r) -> Printf.sprintf "(%s >= %s)" (to_string l) (to_string r)
-  | And (l, r) -> Printf.sprintf "(%s && %s)" (to_string l) (to_string r)
-  | Or (l, r) -> Printf.sprintf "(%s || %s)" (to_string l) (to_string r)
-  | Neg e -> Printf.sprintf "(-%s)" (to_string e)
-  | Call (f, args) ->
-      Printf.sprintf "%s(%s)" f (String.concat ", " (List.map to_string args))
-  | Array (n, t, elems) ->
-      Printf.sprintf "[%d]%s{%s}" n (show_types t)
-        (String.concat ", " (List.map to_string elems))
-  | If (cond, _, _, _) -> Printf.sprintf "if(%s)" (to_string cond)

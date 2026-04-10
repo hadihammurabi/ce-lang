@@ -30,6 +30,7 @@ stmt:
   | def_fn          { $1 }
   | def_let         { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
+  | name = IDENT LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
   | RETURN expr     { Return $2 }
   | BREAK           { Break }
   | block           { Block $1 }
@@ -103,7 +104,7 @@ expr_simple:
   | name = IDENT LBRACKET idx = expr RBRACKET                     { ArrayAccess (name, idx) }
   | id = path                                                     { Let id }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
-  | MINUS e = expr %prec UMINUS                                   {  Neg e  }
+  | MINUS e = expr %prec UMINUS                                   { Neg e }
 
 expr:
   | e = expr_simple               { e }

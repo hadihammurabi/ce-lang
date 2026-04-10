@@ -226,6 +226,25 @@ and codegen_stmt = function
       in
       ignore (build_store val_ var_ptr ce_builder);
       val_
+  | ArrayAssign (name, index_expr, val_expr) ->
+      let array_ptr_val, array_ty =
+        match Hashtbl.find_opt named_values name with
+        | Some (v, ty) -> (v, ty)
+        | None ->
+            raise (Error ("Array '" ^ name ^ "' not found for assignment"))
+      in
+
+      let idx_val = codegen_expr index_expr in
+      let val_to_store = codegen_expr val_expr in
+
+      let zero = const_int (i32_type ce_ctx) 0 in
+      let indices = [| zero; idx_val |] in
+      let element_ptr =
+        build_in_bounds_gep array_ty array_ptr_val indices "arrayidx" ce_builder
+      in
+
+      ignore (build_store val_to_store element_ptr ce_builder);
+      val_to_store
   | DefFN (name, params, ret_ty, body) ->
       let param_types =
         Array.of_list (List.map (fun p -> llvm_type_of p.ty) params)
