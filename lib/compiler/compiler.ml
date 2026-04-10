@@ -258,7 +258,7 @@ and codegen_stmt = function
       let struct_llty = named_struct_type ce_ctx name in
       struct_set_body struct_llty field_types false;
 
-      let field_map = List.mapi (fun i f -> (f.name, i)) fields in
+      let field_map = List.mapi (fun i f -> (f.field_name, i)) fields in
       Hashtbl.add struct_registry name (struct_llty, field_map);
       const_null (void_type ce_ctx)
   | Assign (name, expr) ->
@@ -318,7 +318,7 @@ and codegen_stmt = function
       let old_named_values = Hashtbl.copy named_values in
       Array.iteri
         (fun i a ->
-          let n = (List.nth params i).name in
+          let n = (List.nth params i).param_name in
           let p_ty = (List.nth params i).ty in
           let llvm_p_ty = llvm_type_of p_ty in
           let alloca = build_alloca llvm_p_ty n ce_builder in

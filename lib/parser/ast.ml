@@ -59,8 +59,8 @@ type expr =
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
 [@@deriving show]
 
-and param = { name : string; ty : types }
-and struct_field = { name : string; ty : types; tag : string }
+and param = { param_name : string; ty : types }
+and struct_field = { field_name : string; ty : types }
 
 and stmt =
   | Expr of expr

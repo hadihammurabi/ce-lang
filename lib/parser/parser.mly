@@ -93,7 +93,7 @@ array:
     {  Array (n, t, elems) }
 
 param:
-  | name = IDENT ty = types { { name = name; ty = ty } }
+  | name = IDENT ty = types { { param_name = name; ty = ty } }
 
 def_fn:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
@@ -112,7 +112,7 @@ struct_fields:
   | f = struct_field sep fields = struct_fields { f :: fields }
 
 struct_field:
-  | name = IDENT ty = types { { name = name; ty = ty } }
+  | name = IDENT ty = types { { field_name = name; ty = ty } }
 
 module_path:
   | IDENT { [$1] }
