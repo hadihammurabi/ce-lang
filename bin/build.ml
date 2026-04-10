@@ -68,6 +68,8 @@ let rec namespace_expr prefix decls = function
   | Or (l, r) ->
       Or (namespace_expr prefix decls l, namespace_expr prefix decls r)
   | Neg e -> Neg (namespace_expr prefix decls e)
+  | Ref e -> Ref (namespace_expr prefix decls e)
+  | Deref e -> Deref (namespace_expr prefix decls e)
   | Call (name, args) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
@@ -100,6 +102,7 @@ and namespace_stmt prefix decls = function
   | ArrayAssign (name, idx, e) ->
       ArrayAssign
         (name, namespace_expr prefix decls idx, namespace_expr prefix decls e)
+  | DerefAssign (ptr, e) -> DerefAssign (namespace_expr prefix decls ptr, namespace_expr prefix decls e)
   | Return e -> Return (namespace_expr prefix decls e)
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
   | For stmts -> For (List.map (namespace_stmt prefix decls) stmts)

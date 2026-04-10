@@ -3,6 +3,11 @@ open Ce_parser.Ast
 
 exception Error of string
 
+let named_values : (string, llvalue * lltype) Hashtbl.t = Hashtbl.create 10
+let named_values : (string, llvalue * types) Hashtbl.t = Hashtbl.create 10
+let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
+let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
+
 let rec llvm_type_of = function
   | TInt -> i64_type ce_ctx
   | TFloat -> double_type ce_ctx
@@ -10,12 +15,9 @@ let rec llvm_type_of = function
   | TVoid -> void_type ce_ctx
   | TString -> pointer_type ce_ctx
   | TChar -> i8_type ce_ctx
+  | TPointer _ -> pointer_type ce_ctx   (* <-- Add this! *)
   | TArray (n, ty) -> array_type (llvm_type_of ty) n
   | TUnknown -> raise (Error "Cannot compile unknown type")
-
-let named_values : (string, llvalue * lltype) Hashtbl.t = Hashtbl.create 10
-let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
-let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
 
 let rec codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
@@ -30,19 +32,34 @@ let rec codegen_expr = function
         | Some (v, ty) -> (v, ty)
         | None -> raise (Error ("Array '" ^ name ^ "' not found"))
       in
+      let llvm_array_ty = llvm_type_of array_ty in
 
       let idx_val = codegen_expr index_expr in
       let zero = const_int (i32_type ce_ctx) 0 in
       let indices = [| zero; idx_val |] in
       let element_ptr =
-        build_in_bounds_gep array_ty array_ptr_val indices "arrayidx" ce_builder
+        build_in_bounds_gep llvm_array_ty array_ptr_val indices "arrayidx" ce_builder
       in
-      let elem_ty = element_type array_ty in
+      let elem_ty = element_type llvm_array_ty in
       build_load elem_ty element_ptr "loadtmp" ce_builder
   | Let name -> (
       match Hashtbl.find_opt named_values name with
-      | Some (v, ty) -> build_load ty v name ce_builder
+      | Some (v, ast_ty) -> build_load (llvm_type_of ast_ty) v name ce_builder
       | None -> raise (Error ("Unknown variable: " ^ name)))
+  | Ref (Let name) ->
+      let (ptr_val, _) = Hashtbl.find named_values name in
+      ptr_val
+  | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
+
+  | Deref (Let name) ->
+      let (ptr_to_ptr, ast_ty) = Hashtbl.find named_values name in
+      let inner_ty = match ast_ty with
+        | TPointer t -> t
+        | _ -> raise (Error ("Variable '" ^ name ^ "' is not a pointer"))
+      in
+      let actual_ptr = build_load (llvm_type_of ast_ty) ptr_to_ptr "ptrload" ce_builder in
+      build_load (llvm_type_of inner_ty) actual_ptr "dereftmp" ce_builder
+  | Deref _ -> raise (Error "Complex pointer math not yet supported")
   | Add (l, r) ->
       let lv = codegen_expr l in
       let rv = codegen_expr r in
@@ -215,7 +232,7 @@ and codegen_stmt = function
       let alloca = build_alloca ll_ty name ce_builder_alloca in
       ignore (build_store init_val alloca ce_builder);
 
-      Hashtbl.add named_values name (alloca, ll_ty);
+      Hashtbl.add named_values name (alloca, ty);
       alloca
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
@@ -240,11 +257,22 @@ and codegen_stmt = function
       let zero = const_int (i32_type ce_ctx) 0 in
       let indices = [| zero; idx_val |] in
       let element_ptr =
-        build_in_bounds_gep array_ty array_ptr_val indices "arrayidx" ce_builder
+        build_in_bounds_gep (llvm_type_of array_ty ) array_ptr_val indices "arrayidx" ce_builder
       in
 
       ignore (build_store val_to_store element_ptr ce_builder);
       val_to_store
+  | DerefAssign (Let name, val_expr) ->
+      let (ptr_to_ptr, ast_ty) = Hashtbl.find named_values name in
+      let _ = match ast_ty with
+        | TPointer t -> t
+        | _ -> raise (Error ("Variable '" ^ name ^ "' is not a pointer"))
+      in
+      let actual_ptr = build_load (llvm_type_of ast_ty) ptr_to_ptr "ptrload" ce_builder in
+      let val_to_store = codegen_expr val_expr in
+      ignore (build_store val_to_store actual_ptr ce_builder);
+      val_to_store
+  | DerefAssign _ -> raise (Error "Can only assign to variable pointers")
   | DefFN (name, params, ret_ty, body) ->
       let param_types =
         Array.of_list (List.map (fun p -> llvm_type_of p.ty) params)
@@ -260,8 +288,9 @@ and codegen_stmt = function
       Array.iteri
         (fun i a ->
           let n = (List.nth params i).name in
-          let p_ty = llvm_type_of (List.nth params i).ty in
-          let alloca = build_alloca p_ty n ce_builder in
+          let p_ty = (List.nth params i).ty in
+          let llvm_p_ty = llvm_type_of p_ty  in
+          let alloca = build_alloca llvm_p_ty n ce_builder in
           ignore (build_store a alloca ce_builder);
           Hashtbl.add named_values n (alloca, p_ty))
         (Llvm.params f);

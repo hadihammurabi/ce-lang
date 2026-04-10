@@ -9,6 +9,7 @@ type types =
   | TVoid
   | TString
   | TChar
+  | TPointer of types
   | TInt
   | TFloat
   | TUnknown
@@ -21,6 +22,7 @@ let rec t = function
   | TBool -> i1_type ce_ctx
   | TString -> pointer_type ce_ctx
   | TChar -> i8_type ce_ctx
+  | TPointer _ -> pointer_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TArray (n, inner) -> array_type (t inner) n
   | _ -> failwith "Codegen error: TypeUnknown reached LLVM backend"
@@ -29,6 +31,8 @@ type expr =
   | Void
   | String of string
   | Char of char
+  | Ref of expr
+  | Deref of expr
   | Bool of bool
   | Int of int
   | Float of float
@@ -61,6 +65,7 @@ and stmt =
   | DefLet of string * bool * types * expr
   | Assign of string * expr
   | ArrayAssign of string * expr * expr
+  | DerefAssign of expr * expr
   | Return of expr
   | Block of stmt list
   | For of stmt list

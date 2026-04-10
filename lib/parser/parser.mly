@@ -7,8 +7,8 @@
 %token <string> STRING IDENT
 %token <char> CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
-%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT
-%token          EOF RETURN IMPORT BREAK
+%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP
+%token          EOF RETURN IMPORT BREAK NEWLINE
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
@@ -23,14 +23,23 @@
 %%
 
 prog:
-  | EOF                 { [] }
-  | stmt prog           { $1 :: $2}
+  | sep_opt EOF                 { [] }
+  | sep_opt stmt_list EOF       { $2 }
+
+sep:
+  | NEWLINE       { () }
+  | sep NEWLINE   { () }
+
+sep_opt:
+  | /* empty */   { () }
+  | sep           { () }
 
 stmt:
   | def_fn          { $1 }
   | def_let         { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
-  | name = IDENT LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
+  | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
+  | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
   | RETURN expr     { Return $2 }
   | BREAK           { Break }
   | block           { Block $1 }
@@ -39,7 +48,8 @@ stmt:
   | IMPORT path = module_path { Import path }
 
 block:
-  | LBRACE body = stmt_list RBRACE { body }
+  | LBRACE sep_opt RBRACE             { [] }
+  | LBRACE sep_opt stmt_list RBRACE   { $3 }
 
 stmt_if:
   | IF e = expr body = block tail = stmt_if_tail
@@ -53,8 +63,9 @@ stmt_if_tail:
   | ELSE body = block { ([], Some body) }
 
 stmt_list:
-  | { [] }
-  | stmt stmt_list { $1 :: $2 }
+  | stmt                  { [$1] }
+  | stmt sep              { [$1] }
+  | stmt sep stmt_list    { $1 :: $3 }
 
 def_let:
   | LET name = IDENT ty = types EQUALS e = expr { DefLet (name, false, ty, e) }
@@ -71,6 +82,7 @@ type_scalar:
 types:
   | t = type_scalar                       { t }
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
+  | STAR ty = types                       { TPointer ty }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -105,6 +117,8 @@ expr_simple:
   | id = path                                                     { Let id }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
+  | AMP e = expr_simple                                           { Ref e }
+  | STAR e = expr_simple                                          { Deref e }
 
 expr:
   | e = expr_simple               { e }
