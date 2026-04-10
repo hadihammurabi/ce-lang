@@ -5,11 +5,12 @@
 %token <int>    INT
 %token <float>  FLOAT
 %token <string> STRING IDENT
+%token <char> CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT
 %token          EOF RETURN IMPORT BREAK
 %token          TYPE_BOOL TRUE FALSE
-%token          TYPE_VOID TYPE_STRING TYPE_INT TYPE_FLOAT
+%token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
 
 %left OR AND
@@ -61,6 +62,7 @@ def_let:
 type_scalar:
   | TYPE_VOID  { TVoid }
   | TYPE_STRING{ TString }
+  | TYPE_CHAR  { TChar }
   | TYPE_BOOL  { TBool }
   | TYPE_INT   { TInt }
   | TYPE_FLOAT { TFloat }
@@ -97,6 +99,7 @@ expr_simple:
   | n = INT                                                       { Int n }
   | f = FLOAT                                                     { Float f }
   | s = STRING                                                    { String s }
+  | c = CHAR                                                      { Char c }
   | id = path                                                     { Let id }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
   | MINUS e = expr %prec UMINUS                                   {  Neg e  }

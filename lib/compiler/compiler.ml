@@ -9,6 +9,7 @@ let rec llvm_type_of = function
   | TBool -> i1_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TString -> pointer_type ce_ctx
+  | TChar -> i8_type ce_ctx
   | TArray (n, ty) -> array_type (llvm_type_of ty) n
   | TUnknown -> raise (Error "Cannot compile unknown type")
 
@@ -21,6 +22,7 @@ let rec codegen_expr = function
   | Int n -> const_int (i64_type ce_ctx) n
   | Float f -> const_float (double_type ce_ctx) f
   | Bool b -> const_int (i1_type ce_ctx) (if b then 1 else 0)
+  | Char c -> const_int (i8_type ce_ctx) (Char.code c)
   | String s -> build_global_stringptr s "strtmp" ce_builder
   | Let name -> (
       match Hashtbl.find_opt named_values name with

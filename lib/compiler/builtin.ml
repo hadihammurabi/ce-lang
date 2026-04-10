@@ -20,7 +20,8 @@ let get name =
             let ty = type_of v in
             match classify_type ty with
             | TypeKind.Integer ->
-                if integer_bitwidth ty = 1 then
+                let bitwidth = integer_bitwidth ty in
+                if bitwidth = 1 then
                   let true_str =
                     build_global_stringptr "true" "truestr" builder
                   in
@@ -31,6 +32,7 @@ let get name =
                     build_select v true_str false_str "boolstr" builder
                   in
                   ("%s", [ str_val ])
+                else if bitwidth = 8 then ("%c", [ v ])
                 else ("%ld", [ v ])
             | TypeKind.Double -> ("%g", [ v ])
             | TypeKind.Pointer -> ("%s", [ v ])

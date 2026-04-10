@@ -8,6 +8,7 @@ type types =
   | TBool
   | TVoid
   | TString
+  | TChar
   | TInt
   | TFloat
   | TUnknown
@@ -19,6 +20,7 @@ let rec t = function
   | TFloat -> double_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TString -> pointer_type ce_ctx
+  | TChar -> i8_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TArray (n, inner) -> array_type (t inner) n
   | _ -> failwith "Codegen error: TypeUnknown reached LLVM backend"
@@ -26,6 +28,7 @@ let rec t = function
 type expr =
   | Void
   | String of string
+  | Char of char
   | Bool of bool
   | Int of int
   | Float of float
@@ -65,6 +68,7 @@ and stmt =
 let rec to_string = function
   | Void -> ""
   | String s -> s
+  | Char c -> Printf.sprintf "'%c'" c
   | Bool b -> string_of_bool b
   | Int n -> string_of_int n
   | Float f -> string_of_float f

@@ -27,7 +27,8 @@ rule tokenize = parse
   | "bool"             { TYPE_BOOL }     
   | "true"             { TRUE }     
   | "false"            { FALSE }     
-  | "string"              { TYPE_STRING }     
+  | "string"           { TYPE_STRING }     
+  | "char"             { TYPE_CHAR }
   | "int"              { TYPE_INT }     
   | "float"            { TYPE_FLOAT }   
   | "void"             { TYPE_VOID }   
@@ -35,6 +36,12 @@ rule tokenize = parse
   | alpha alnum*       { IDENT (Lexing.lexeme lexbuf) }
 
   | '"'                { let buf = Buffer.create 32 in string_lit buf lexbuf }
+
+  | '\'' ([^ '\\' '\''] as c) '\'' { CHAR c }
+  | '\'' '\\' 'n' '\''             { CHAR '\n' }
+  | '\'' '\\' 't' '\''             { CHAR '\t' }
+  | '\'' '\\' '\\' '\''            { CHAR '\\' }
+  | '\'' '\\' '\'' '\''            { CHAR '\'' }
 
   | '+'                { PLUS }
   | '-'                { MINUS }
