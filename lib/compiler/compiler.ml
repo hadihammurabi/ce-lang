@@ -4,7 +4,7 @@ open Ce_parser.Ast
 exception Error of string
 
 let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
-let named_values : (string, llvalue * types) Hashtbl.t = Hashtbl.create 10
+let named_values : (string, llvalue * types * bool) Hashtbl.t = Hashtbl.create 10
 let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
 
 let struct_templates :
@@ -203,7 +203,7 @@ and codegen_expr = function
   | ArrayAccess (name, index_expr) ->
       let array_ptr_val, array_ty =
         match Hashtbl.find_opt named_values name with
-        | Some (v, ty) -> (v, ty)
+        | Some (v, ty, _) -> (v, ty)
         | None -> raise (Error ("Array '" ^ name ^ "' not found"))
       in
       let llvm_array_ty = llvm_type_of array_ty in
@@ -224,7 +224,7 @@ and codegen_expr = function
         let props = List.tl parts in
 
         match Hashtbl.find_opt named_values base_name with
-        | Some (v, ast_ty) ->
+        | Some (v, ast_ty, _) ->
             let base_val =
               build_load (llvm_type_of ast_ty) v base_name ce_builder
             in
@@ -275,14 +275,14 @@ and codegen_expr = function
         | None -> raise (Error ("Unknown variable: " ^ base_name))
       else
         match Hashtbl.find_opt named_values name with
-        | Some (v, ast_ty) -> build_load (llvm_type_of ast_ty) v name ce_builder
+        | Some (v, ast_ty, _) -> build_load (llvm_type_of ast_ty) v name ce_builder
         | None -> raise (Error ("Unknown variable: " ^ name)))
   | Ref (Let name) ->
-      let ptr_val, _ = Hashtbl.find named_values name in
+      let ptr_val, _, _ = Hashtbl.find named_values name in
       ptr_val
   | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
   | Deref (Let name) ->
-      let ptr_to_ptr, ast_ty = Hashtbl.find named_values name in
+      let ptr_to_ptr, ast_ty ,_= Hashtbl.find named_values name in
       let inner_ty =
         match ast_ty with
         | TPointer t -> t
@@ -562,7 +562,7 @@ and codegen_stmt = function
   | Expr e ->
       ignore (codegen_expr e);
       const_null (void_type ce_ctx)
-  | DefLet (name, _ismut, ty, expr) ->
+  | DefLet (name, ismut, ty, expr) ->
       let init_val = codegen_expr expr in
       let the_function = block_parent (insertion_block ce_builder) in
       let ce_builder_alloca =
@@ -573,7 +573,7 @@ and codegen_stmt = function
       let alloca = build_alloca ll_ty name ce_builder_alloca in
       ignore (build_store init_val alloca ce_builder);
 
-      Hashtbl.add named_values name (alloca, ty);
+      Hashtbl.add named_values name (alloca, ty, ismut);
       alloca
   | DefType (name, underlying_ty) ->
       Hashtbl.add type_aliases name underlying_ty;
@@ -603,7 +603,10 @@ and codegen_stmt = function
           let props = List.tl parts in
 
           match Hashtbl.find_opt named_values base_name with
-          | Some (v, ast_ty) ->
+          | Some (v, ast_ty, ismut) ->
+              if not ismut then 
+                raise (Error ("Cannot assign to property of immutable variable '" ^ base_name ^ "'"));
+
               let rec get_gep current_ptr current_ty props =
                 match props with
                 | [] -> current_ptr
@@ -660,7 +663,9 @@ and codegen_stmt = function
                 (Error ("Variable not defined for assignment: " ^ base_name))
         else
           match Hashtbl.find_opt named_values name with
-          | Some (v, _) -> v
+          | Some (v, _, ismut) -> if not ismut then 
+                raise (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
+              v
           | None ->
               raise (Error ("Variable not defined for assignment: " ^ name))
       in
@@ -669,7 +674,9 @@ and codegen_stmt = function
   | ArrayAssign (name, index_expr, val_expr) ->
       let array_ptr_val, array_ty =
         match Hashtbl.find_opt named_values name with
-        | Some (v, ty) -> (v, ty)
+        | Some (v, ty, ismut) -> if not ismut then 
+              raise (Error ("Cannot assign to immutable array '" ^ name ^ "'"));
+            (v, ty)
         | None ->
             raise (Error ("Array '" ^ name ^ "' not found for assignment"))
       in
@@ -687,7 +694,7 @@ and codegen_stmt = function
       ignore (build_store val_to_store element_ptr ce_builder);
       val_to_store
   | DerefAssign (Let name, val_expr) ->
-      let ptr_to_ptr, ast_ty = Hashtbl.find named_values name in
+      let ptr_to_ptr, ast_ty ,_= Hashtbl.find named_values name in
       let _ =
         match ast_ty with
         | TPointer t -> t
@@ -719,7 +726,7 @@ and codegen_stmt = function
           let llvm_p_ty = llvm_type_of p_ty in
           let alloca = build_alloca llvm_p_ty n ce_builder in
           ignore (build_store a alloca ce_builder);
-          Hashtbl.add named_values n (alloca, p_ty))
+          Hashtbl.add named_values n (alloca, p_ty, false))
         (Llvm.params f);
 
       List.iter (fun s -> ignore (codegen_stmt s)) body;
