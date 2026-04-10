@@ -15,6 +15,8 @@ type types =
   | TInt
   | TFloat
   | TUnknown
+  | TGenericParam of string
+  | TGenericInst of string * types list
   | TArray of int * types
 [@@deriving show]
 
@@ -57,7 +59,7 @@ type expr =
   | ArrayAccess of string * expr
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
-  | Struct of string * (string * expr) list
+  | Struct of string * types list * (string * expr) list
 [@@deriving show]
 
 and param = { param_name : string; ty : types }
@@ -68,7 +70,11 @@ and stmt =
   | DefFN of string * param list * types * stmt list
   | DefLet of string * bool * types * expr
   | DefType of string * types
-  | DefStruct of string * struct_field list
+  | DefStruct of string * (string * types) list * struct_field list
+  | Impl of
+      string
+      * (string * types) list
+      * (string * string * types * stmt list) list
   | Assign of string * expr
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr
@@ -77,4 +83,3 @@ and stmt =
   | For of stmt list
   | Break
   | Import of string list
-  | Impl of string * (string * string * types * stmt list) list

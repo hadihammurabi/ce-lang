@@ -6,21 +6,10 @@
   let last_token_was_end_of_expr = ref false
   let nesting_level = ref 0
 
-  let expr_end tok =
-    last_token_was_end_of_expr := true;
-    tok
-
-  let expr_cont tok =
-    last_token_was_end_of_expr := false;
-    tok
-
-  let open_paren tok =
-    incr nesting_level;
-    expr_cont tok
-
-  let close_paren tok =
-    decr nesting_level;
-    expr_end tok
+  let expr_end tok = last_token_was_end_of_expr := true; tok
+  let expr_cont tok = last_token_was_end_of_expr := false; tok
+  let open_paren tok = incr nesting_level; expr_cont tok
+  let close_paren tok = decr nesting_level; expr_end tok
 }
 
 let digit      = ['0'-'9']

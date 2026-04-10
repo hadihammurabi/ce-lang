@@ -6,11 +6,20 @@ exception Error of string
 let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
 let named_values : (string, llvalue * types) Hashtbl.t = Hashtbl.create 10
 let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
+let struct_templates : (string, (string * types) list * struct_field list) Hashtbl.t = Hashtbl.create 10
+let impl_templates : (string, (string * types) list * (string * string * types * stmt list) list) Hashtbl.t = Hashtbl.create 10
 
 let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
   Hashtbl.create 10
 
 let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
+
+let rec substitute_type type_map = function
+  | TGenericParam name -> (try List.assoc name type_map with Not_found -> TGenericParam name)
+  | TPointer ty -> TPointer (substitute_type type_map ty)
+  | TArray (n, ty) -> TArray (n, substitute_type type_map ty)
+  | TGenericInst (name, args) -> TGenericInst (name, List.map (substitute_type type_map) args)
+  | other -> other
 
 let rec llvm_type_of = function
   | TInt -> i64_type ce_ctx
@@ -32,8 +41,31 @@ let rec llvm_type_of = function
       let llty, _ = Hashtbl.find struct_registry name in
       llty
   | TUnknown -> raise (Error "Cannot compile unknown type")
+  | TGenericParam name -> raise (Error ("Uninstantiated generic parameter '" ^ name))
+  | TGenericInst (name, arg_types) ->
+      let mangled_name = name ^ "_" ^ (String.concat "_" (List.map show_types arg_types)) in
+      (match Hashtbl.find_opt struct_registry mangled_name with
+      | Some (llty, _) -> llty
+      | None ->
+          let (params, fields) = Hashtbl.find struct_templates name in
+          let type_map = List.map2 (fun (p_name, _) arg_ty -> (p_name, arg_ty)) params arg_types in
+          let specialized_fields = List.map (fun f -> 
+              { field_name = f.field_name; ty = substitute_type type_map f.ty }
+          ) fields in
+          
+          ignore (codegen_stmt (DefStruct (mangled_name, [], specialized_fields)));
+          
+          (match Hashtbl.find_opt impl_templates name with
+          | Some (_, methods) ->
+              let specialized_methods = List.map (fun (m_name, self_id, ret_ty, body) ->
+                  (m_name, self_id, substitute_type type_map ret_ty, body)
+              ) methods in
+              ignore (codegen_stmt (Impl (mangled_name, [], specialized_methods)))
+          | None -> ());
 
-let rec codegen_expr = function
+          fst (Hashtbl.find struct_registry mangled_name))
+
+        and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
   | Int n -> const_int (i64_type ce_ctx) n
   | Float f -> const_float (double_type ce_ctx) f
@@ -200,22 +232,31 @@ let rec codegen_expr = function
       let v = codegen_expr e in
       if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
       else build_neg v "negtmp" ce_builder
-| Call (name, args) -> (
+  | Call (name, args) -> (
       if String.contains name '.' then
         let last_dot_idx = String.rindex name '.' in
         let base_path = String.sub name 0 last_dot_idx in
-        let method_name = String.sub name (last_dot_idx + 1) (String.length name - last_dot_idx - 1) in
+        let method_name =
+          String.sub name (last_dot_idx + 1)
+            (String.length name - last_dot_idx - 1)
+        in
         if Hashtbl.mem struct_registry base_path then
           let mangled_name = base_path ^ "::" ^ method_name in
           let callee =
             match lookup_function mangled_name ce_module with
             | Some c -> c
-            | None -> raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ base_path ^ "'"))
+            | None ->
+                raise
+                  (Error
+                     ("Unknown method '" ^ method_name ^ "' on struct '"
+                    ^ base_path ^ "'"))
           in
           let ft =
             match Hashtbl.find_opt function_types mangled_name with
             | Some t -> t
-            | None -> raise (Error ("Unknown function type for method: " ^ mangled_name))
+            | None ->
+                raise
+                  (Error ("Unknown function type for method: " ^ mangled_name))
           in
           let args_val = Array.of_list (List.map codegen_expr args) in
           build_call ft callee args_val "staticcalltmp" ce_builder
@@ -223,32 +264,42 @@ let rec codegen_expr = function
           let self_val = codegen_expr (Let base_path) in
           let self_ty_llvm = type_of self_val in
 
-          (match struct_name self_ty_llvm with
-          | Some s_name -> (
+          match struct_name self_ty_llvm with
+          | Some s_name ->
               let clean_name =
                 if String.starts_with ~prefix:"struct." s_name then
                   String.sub s_name 7 (String.length s_name - 7)
                 else s_name
               in
-              
+
               let mangled_name = clean_name ^ "::" ^ method_name in
               let callee =
                 match lookup_function mangled_name ce_module with
                 | Some c -> c
-                | None -> raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ clean_name ^ "'"))
+                | None ->
+                    raise
+                      (Error
+                         ("Unknown method '" ^ method_name ^ "' on struct '"
+                        ^ clean_name ^ "'"))
               in
-              
+
               let ft =
                 match Hashtbl.find_opt function_types mangled_name with
                 | Some t -> t
-                | None -> raise (Error ("Unknown function type for method: " ^ mangled_name))
+                | None ->
+                    raise
+                      (Error
+                         ("Unknown function type for method: " ^ mangled_name))
               in
               let compiled_args = List.map codegen_expr args in
               let all_args = Array.of_list (self_val :: compiled_args) in
 
               build_call ft callee all_args "methodcalltmp" ce_builder
-            )
-          | None -> raise (Error ("Cannot call method '" ^ method_name ^ "' on a non-struct type")))
+          | None ->
+              raise
+                (Error
+                   ("Cannot call method '" ^ method_name
+                  ^ "' on a non-struct type"))
       else
         let arg_vals = List.map codegen_expr args in
         match Builtin.get name with
@@ -268,7 +319,6 @@ let rec codegen_expr = function
             let args_val = Array.of_list arg_vals in
 
             build_call ft callee args_val "calltmp" ce_builder)
-
   | Array (n, ty, elems) ->
       let elem_ty = llvm_type_of ty in
       let arr_ty = array_type elem_ty n in
@@ -340,15 +390,21 @@ let rec codegen_expr = function
         let ty = type_of first_val in
         if ty = void_type ce_ctx then const_null (void_type ce_ctx)
         else build_phi incoming "iftmp" ce_builder
-  | Struct (name, fields) ->
-      let llty, field_map = Hashtbl.find struct_registry name in
+  | Struct (name, type_args, fields) ->
+      let mangled_name = 
+        if type_args = [] then name 
+        else name ^ "_" ^ (String.concat "_" (List.map show_types type_args)) 
+      in
+      let llty, field_map = Hashtbl.find struct_registry mangled_name in
       let alloc = build_alloca llty "structtmp" ce_builder in
+
       List.iter
         (fun (fname, fexpr) ->
           let fidx = List.assoc fname field_map in
           let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
           ignore (build_store (codegen_expr fexpr) fptr ce_builder))
         fields;
+        
       build_load llty alloc "structload" ce_builder
 
 and codegen_stmt = function
@@ -371,7 +427,11 @@ and codegen_stmt = function
   | DefType (name, underlying_ty) ->
       Hashtbl.add type_aliases name underlying_ty;
       const_null (void_type ce_ctx)
-  | DefStruct (name, fields) ->
+  | DefStruct (name, params, fields) ->
+      if List.length params > 0 then begin
+          Hashtbl.add struct_templates name (params, fields);
+          const_null (void_type ce_ctx)
+      end else begin
       let field_types =
         Array.of_list (List.map (fun f -> llvm_type_of f.ty) fields)
       in
@@ -381,6 +441,7 @@ and codegen_stmt = function
       let field_map = List.mapi (fun i f -> (f.field_name, i)) fields in
       Hashtbl.add struct_registry name (struct_llty, field_map);
       const_null (void_type ce_ctx)
+      end
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
       let var_ptr =
@@ -549,16 +610,21 @@ and codegen_stmt = function
       const_null (void_type ce_ctx)
   | Return e -> build_ret (codegen_expr e) ce_builder
   | Import _ -> const_null (void_type ce_ctx)
-  | Impl (struct_name, methods) ->
+  | Impl (name, params, methods) ->
+      if List.length params > 0 then begin
+          Hashtbl.add impl_templates name (params, methods);
+          const_null (void_type ce_ctx)
+      end else begin
       List.iter
         (fun (method_name, self_id, ret_ty, body) ->
-          let mangled_name = struct_name ^ "::" ^ method_name in
-          let self_param = { param_name = self_id; ty = TNamed struct_name } in
+          let mangled_name = name ^ "::" ^ method_name in
+          let self_param = { param_name = self_id; ty = TNamed name } in
           let params = [ self_param ] in
           ignore (codegen_stmt (DefFN (mangled_name, params, ret_ty, body))))
         methods;
 
       const_null (void_type ce_ctx)
+      end
 
 let optimize the_module =
   ignore (Llvm_all_backends.initialize ());

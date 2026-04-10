@@ -48,8 +48,8 @@ stmt:
   | expr            { Expr $1 }
   | FOR body = block { For body }
   | IMPORT path = module_path { Import path }
-  | IMPL struct_name = IDENT LBRACE sep_opt methods = impl_method_list RBRACE
-    { Impl (struct_name, methods) }
+  | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
+      { Impl (struct_name, params, methods) }
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -88,6 +88,7 @@ types:
   | t = type_scalar                       { t }
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
   | STAR ty = types                       { TPointer ty }
+  | name = IDENT LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -105,8 +106,8 @@ def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
 
 def_struct:
-  | TYPE name = IDENT LBRACE sep_opt RBRACE { DefStruct (name, []) }
-  | TYPE name = IDENT LBRACE sep_opt fields = struct_field_list RBRACE { DefStruct (name, fields) }
+  | TYPE name = IDENT params = generic_params_opt LBRACE sep_opt RBRACE { DefStruct (name, params, []) }
+  | TYPE name = IDENT params = generic_params_opt LBRACE sep_opt fields = struct_field_list RBRACE { DefStruct (name, params, fields) }
 
 struct_field_list:
   | f = struct_field                                            { [f] }
@@ -136,6 +137,10 @@ path:
   | id = IDENT { id }
   | id = IDENT DOT p = path { id ^ "." ^ p }
 
+generic_params_opt:
+  | { [] }
+  | LBRACKET name = IDENT ty = types RBRACKET { [(name, ty)] }
+
 impl_method_list:
   |  { [] }
   | m = impl_method sep_opt rest = impl_method_list { m :: rest }
@@ -143,6 +148,10 @@ impl_method_list:
 impl_method:
   | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
     { (name, self_id, ret_ty, body) }
+
+type_args_opt:
+  |  { [] }
+  | LBRACKET ty = types RBRACKET { [ty] }
 
 expr_simple:
   | a = array                                                     { a }
@@ -159,8 +168,8 @@ expr_simple:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
-  | name = IDENT LBRACE sep_opt RBRACE                            { Struct (name, []) }
-  | name = IDENT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, fields) }
+  | name = IDENT targs = type_args_opt LBRACE sep_opt RBRACE      { Struct (name, targs, []) }
+  | name = IDENT targs = type_args_opt LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, targs, fields) }
 
 expr:
   | e = expr_simple               { e }
