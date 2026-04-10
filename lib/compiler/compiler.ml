@@ -306,7 +306,7 @@ and codegen_stmt = function
   | DerefAssign _ -> raise (Error "Can only assign to variable pointers")
   | DefFN (name, params, ret_ty, body) ->
       let param_types =
-        Array.of_list (List.map (fun p -> llvm_type_of p.ty) params)
+        Array.of_list (List.map (fun (p: param) -> llvm_type_of p.ty) params)
       in
       let ft = function_type (llvm_type_of ret_ty) param_types in
       Hashtbl.add function_types name ft;
