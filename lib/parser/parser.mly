@@ -7,7 +7,7 @@
 %token <string> STRING IDENT
 %token <char>   CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
-%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP
+%token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP SEMICOLON
 %token          EOF RETURN IMPORT BREAK NEWLINE TYPE
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
@@ -103,16 +103,14 @@ def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
 
 def_struct:
-  | TYPE name = IDENT LBRACE fields = struct_fields RBRACE 
+  | TYPE name = IDENT LBRACE fields = list(terminated(struct_field, SEMICOLON)) RBRACE 
     { DefStruct (name, fields) }
-
-struct_fields:
-  | /* empty */ { [] }
-  | f = struct_field sep_opt { [f] }
-  | f = struct_field sep fields = struct_fields { f :: fields }
 
 struct_field:
   | name = IDENT ty = types { { field_name = name; ty = ty } }
+
+struct_init_field:
+  | name = IDENT EQUALS e = expr { (name, e) }
 
 module_path:
   | IDENT { [$1] }
@@ -137,6 +135,8 @@ expr_simple:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
+  | name = IDENT LBRACE fields = separated_list(SEMICOLON, struct_init_field) SEMICOLON? RBRACE
+    { Struct (name, fields) }
 
 expr:
   | e = expr_simple               { e }

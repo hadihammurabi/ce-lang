@@ -91,6 +91,7 @@ rule tokenize = parse
   | '='                { expr_cont EQUALS } 
   | "."                { expr_cont DOT }
   | "&"                { expr_cont AMP }
+  | ";"                { expr_cont SEMICOLON }
 
   | "=="               { expr_cont EQEQ }
   | "<="               { expr_cont LTE }

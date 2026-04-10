@@ -57,6 +57,7 @@ type expr =
   | ArrayAccess of string * expr
   (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
+  | Struct of string * (string * expr) list
 [@@deriving show]
 
 and param = { param_name : string; ty : types }

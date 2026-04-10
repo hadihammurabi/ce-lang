@@ -231,6 +231,16 @@ let rec codegen_expr = function
         if ty = void_type ce_ctx then const_null (void_type ce_ctx)
         else build_phi incoming "iftmp" ce_builder
 
+  | Struct (name, fields) ->
+    let (llty, field_map) = Hashtbl.find struct_registry name in
+    let alloc = build_alloca llty "structtmp" ce_builder in
+    List.iter (fun (fname, fexpr) ->
+      let fidx = List.assoc fname field_map in
+      let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
+      ignore (build_store (codegen_expr fexpr) fptr ce_builder)
+    ) fields;
+    build_load llty alloc "structload" ce_builder
+
 and codegen_stmt = function
   | Expr e ->
       ignore (codegen_expr e);
