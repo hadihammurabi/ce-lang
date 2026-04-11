@@ -24,7 +24,7 @@
 
 prog:
   | sep_opt EOF                 { [] }
-  | sep_opt stmt_list EOF       { $2 }
+  | sep_opt global_stmt_list EOF       { $2 }
 
 sep:
   | NEWLINE       { () }
@@ -33,6 +33,20 @@ sep:
 sep_opt:
   |   { () }
   | sep           { () }
+
+global_stmt_list:
+  | global_stmt                           { [$1] }
+  | global_stmt sep                       { [$1] }
+  | global_stmt sep global_stmt_list      { $1 :: $3 }
+
+global_stmt:
+  | def_fn          { $1 }
+  | def_let         { $1 }
+  | def_type        { $1 }
+  | def_struct      { $1 }
+  | IMPORT path = module_path { Import path }
+  | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
+      { Impl (struct_name, params, methods) }
 
 stmt:
   | def_fn          { $1 }
@@ -47,7 +61,6 @@ stmt:
   | block           { Block $1 }
   | expr            { Expr $1 }
   | FOR body = block { For body }
-  | IMPORT path = module_path { Import path }
   | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
   | RAISE e = expr  { Raise e }  /* ADDED: raise expr */
