@@ -61,6 +61,8 @@ let rec llvm_type_of = function
                 {
                   field_name = f.field_name;
                   ty = substitute_type type_map f.ty;
+                  is_mut = f.is_mut;
+                  (* ADD THIS LINE *)
                 })
               fields
           in
@@ -186,7 +188,11 @@ and codegen_expr = function
                           match Hashtbl.find_opt struct_registry clean_name with
                           | Some (_, field_map) -> (
                               try
-                                let idx = List.assoc prop field_map in
+                                let _, idx, _ =
+                                  List.find
+                                    (fun (n, _, _) -> n = prop)
+                                    field_map
+                                in
                                 let next_val =
                                   build_extractvalue current_val idx "proptmp"
                                     ce_builder
@@ -237,10 +243,22 @@ and codegen_expr = function
   | Deref _ -> raise (Error "Complex pointer math not yet supported")
   | Add (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv build_add build_fadd "subtmp"
+      if classify_type (type_of lv) = TypeKind.Pointer then
+        let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
+        let added = build_add ptr_int rv "addptr" ce_builder in
+        build_inttoptr added (type_of lv) "itp" ce_builder
+      else if classify_type (type_of rv) = TypeKind.Pointer then
+        let ptr_int = build_ptrtoint rv (i64_type ce_ctx) "pti" ce_builder in
+        let added = build_add ptr_int lv "addptr" ce_builder in
+        build_inttoptr added (type_of rv) "itp" ce_builder
+      else build_numeric_op lv rv build_add build_fadd "addtmp"
   | Sub (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv build_sub build_fsub "subtmp"
+      if classify_type (type_of lv) = TypeKind.Pointer then
+        let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
+        let subbed = build_sub ptr_int rv "subptr" ce_builder in
+        build_inttoptr subbed (type_of lv) "itp" ce_builder
+      else build_numeric_op lv rv build_sub build_fsub "subtmp"
   | Mul (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       build_numeric_op lv rv build_mul build_fmul "multmp"
@@ -276,19 +294,25 @@ and codegen_expr = function
       if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
       else build_neg v "negtmp" ce_builder
   | Call (name, targs, args) -> (
-      let target_name =
-        if targs = [] then name else instantiate_generic_fn name targs
-      in
-      match Builtin.get target_name with
+      match Builtin.get name with
       | Some builtin_fn ->
           let arg_vals = List.map codegen_expr args in
-          builtin_fn ce_ctx ce_module ce_builder name arg_vals
+          let targ_lltypes = List.map llvm_type_of targs in
+          builtin_fn ce_ctx ce_module ce_builder name arg_vals targ_lltypes
       | None -> (
+          let target_name =
+            if targs = [] then name else instantiate_generic_fn name targs
+          in
           match lookup_function name ce_module with
           | Some callee ->
               let ft = Hashtbl.find function_types name in
               let expected_tys = param_types ft in
-              let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
+              let arg_vals =
+                List.mapi
+                  (fun i arg ->
+                    coerce_value expected_tys.(i) (codegen_expr arg))
+                  args
+              in
               let args_val = Array.of_list arg_vals in
               build_call ft callee args_val "calltmp" ce_builder
           | None -> (
@@ -296,7 +320,12 @@ and codegen_expr = function
               | Some callee ->
                   let ft = Hashtbl.find function_types target_name in
                   let expected_tys = param_types ft in
-                  let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
+                  let arg_vals =
+                    List.mapi
+                      (fun i arg ->
+                        coerce_value expected_tys.(i) (codegen_expr arg))
+                      args
+                  in
                   let args_val = Array.of_list arg_vals in
                   build_call ft callee args_val "calltmp" ce_builder
               | None ->
@@ -327,13 +356,20 @@ and codegen_expr = function
                       in
                       let ft = Hashtbl.find function_types mangled_name in
                       let expected_tys = param_types ft in
-                      let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
+                      let arg_vals =
+                        List.mapi
+                          (fun i arg ->
+                            coerce_value expected_tys.(i) (codegen_expr arg))
+                          args
+                      in
                       let args_val = Array.of_list arg_vals in
                       build_call ft callee args_val "staticcalltmp" ce_builder
                     else
-                      let self_val = 
-                        try codegen_expr (Let base_path) 
-                        with Error _ -> raise (Error ("Unknown function or method: '" ^ name ^ "'"))
+                      let self_val =
+                        try codegen_expr (Let base_path)
+                        with Error _ ->
+                          raise
+                            (Error ("Unknown function or method: '" ^ name ^ "'"))
                       in
                       let self_ty_llvm = type_of self_val in
 
@@ -356,9 +392,20 @@ and codegen_expr = function
                           in
                           let ft = Hashtbl.find function_types mangled_name in
                           let expected_tys = param_types ft in
-                          let coerced_self = coerce_value expected_tys.(0) self_val in
-                          let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i + 1) (codegen_expr arg)) args in
-                          let all_args = Array.of_list (coerced_self :: arg_vals) in
+                          let coerced_self =
+                            coerce_value expected_tys.(0) self_val
+                          in
+                          let arg_vals =
+                            List.mapi
+                              (fun i arg ->
+                                coerce_value
+                                  expected_tys.(i + 1)
+                                  (codegen_expr arg))
+                              args
+                          in
+                          let all_args =
+                            Array.of_list (coerced_self :: arg_vals)
+                          in
                           build_call ft callee all_args "methodcalltmp"
                             ce_builder
                       | None ->
@@ -452,7 +499,7 @@ and codegen_expr = function
 
       List.iter
         (fun (fname, fexpr) ->
-          let fidx = List.assoc fname field_map in
+          let _, fidx, _ = List.find (fun (n, _, _) -> n = fname) field_map in
           let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
           let expected_ty = (struct_element_types llty).(fidx) in
           let raw_val = codegen_expr fexpr in
@@ -558,7 +605,10 @@ and coerce_value expected_ll_ty raw_val =
       in
       build_insertvalue box_0 vtable_ptr 1 "autobox_v" ce_builder
     end
-    else if classify_type expected_ll_ty = TypeKind.Pointer && classify_type raw_ty = TypeKind.Pointer then begin
+    else if
+      classify_type expected_ll_ty = TypeKind.Pointer
+      && classify_type raw_ty = TypeKind.Pointer
+    then begin
       build_bitcast raw_val expected_ll_ty "ptr_cast" ce_builder
     end
     else raw_val
@@ -601,18 +651,19 @@ and codegen_stmt = function
         let struct_llty = named_struct_type ce_ctx name in
         struct_set_body struct_llty field_types false;
 
-        let field_map = List.mapi (fun i f -> (f.field_name, i)) fields in
+        let field_map =
+          List.mapi (fun i f -> (f.field_name, i, f.is_mut)) fields
+        in
         Hashtbl.add struct_registry name (struct_llty, field_map);
         const_null (void_type ce_ctx)
       end
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
       let var_ptr, expected_ll_ty =
-        if String.contains name '.' then (
+        if String.contains name '.' then
           let parts = String.split_on_char '.' name in
           let base_name = List.hd parts in
-          let v, ast_ty, ismut = Hashtbl.find named_values base_name in
-          if not ismut then raise (Error "Cannot assign to immutable property");
+          let v, ast_ty, _ = Hashtbl.find named_values base_name in
 
           let rec get_ty ty props =
             match props with
@@ -625,12 +676,19 @@ and codegen_stmt = function
                   else s_name
                 in
                 let _, field_map = Hashtbl.find struct_registry clean_name in
-                let idx = List.assoc prop field_map in
+                let _, idx, is_field_mut =
+                  List.find (fun (n, _, _) -> n = prop) field_map
+                in
+                if rest = [] && not is_field_mut then
+                  raise
+                    (Error
+                       ("Cannot assign to immutable field '" ^ prop
+                      ^ "' on struct '" ^ clean_name ^ "'"));
                 get_ty (struct_element_types ty).(idx) rest
           in
           let ll_ast_ty = llvm_type_of ast_ty in
           ( resolve_property_ptr v ll_ast_ty (List.tl parts),
-            get_ty ll_ast_ty (List.tl parts) ))
+            get_ty ll_ast_ty (List.tl parts) )
         else
           let v, ast_ty, ismut = Hashtbl.find named_values name in
           if not ismut then raise (Error "Cannot assign to immutable variable");

@@ -100,13 +100,13 @@ type_scalar:
   | TYPE_BOOL  { TBool }
   | TYPE_INT   { TInt }
   | TYPE_FLOAT { TFloat }
-  | id = IDENT { TNamed id }
+  | id = path { TNamed id }
 
 types:
   | t = type_scalar                       { t }
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
   | STAR ty = types                       { TPointer ty }
-  | name = IDENT LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
+  | name = path LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
   | BANG ty = types                       { TResult ty }
 
 array:
@@ -138,7 +138,8 @@ struct_field_list:
   | f = struct_field sep rest = struct_field_list               { f :: rest }
 
 struct_field:
-  | name = IDENT ty = types { { field_name = name; ty = ty } }
+  | name = IDENT ty = types             { { field_name = name; ty = ty; is_mut = false } }
+  | MUT name = IDENT ty = types         { { field_name = name; ty = ty; is_mut = true } }
 
 struct_init_list:
   | f = struct_init_field                                            { [f] }

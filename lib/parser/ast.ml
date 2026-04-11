@@ -59,13 +59,12 @@ type expr =
   | Let of string
   | Array of int * types * expr list
   | ArrayAccess of string * expr
-  (* if   cond,  block,      elif cond,  block,            block) *)
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
   | Struct of string * types list * (string * expr) list
 [@@deriving show]
 
 and param = { param_name : string; ty : types }
-and struct_field = { field_name : string; ty : types }
+and struct_field = { field_name : string; ty : types; is_mut : bool }
 and fn_signature = { fn_name : string; params : param list; ret_ty : types }
 
 and stmt =

@@ -20,7 +20,7 @@ let resolve_property_ptr current_ptr current_ty props =
               else s_name
             in
             let _, field_map = Hashtbl.find struct_registry clean_name in
-            let idx = List.assoc prop field_map in
+            let _, idx, _ = List.find (fun (n, _, _) -> n = prop) field_map in
             let next_ptr = build_struct_gep ty ptr idx "prop_ptr" ce_builder in
             let next_ty = (struct_element_types ty).(idx) in
             get_gep next_ptr next_ty rest

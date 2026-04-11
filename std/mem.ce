@@ -1,0 +1,10 @@
+fn sizeOf(val any) int {
+  let typeName string = typeOf(val)
+  
+  return if typeName == "int" { 8 
+  } else if typeName == "float" { 8 
+  } else if typeName == "bool" { 1 
+  } else if typeName == "char" { 1 
+  } else if typeName == "string" { 8 
+  } else { 0 }
+}

@@ -91,9 +91,129 @@ let get_print_any context the_module builder =
 
 let get name =
   match name with
+  (* --- 1. NEW GLOBAL ALLOCATOR --- *)
+  | "alloc" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length targ_lltypes <> 1 then
+            raise (Error "alloc expects exactly 1 type argument");
+          if List.length arg_vals <> 1 then
+            raise (Error "alloc expects exactly 1 size argument");
+          let elem_ty = List.hd targ_lltypes in
+          let count_val = List.hd arg_vals in
+          build_array_malloc elem_ty count_val "alloc_tmp" builder)
+  (* --- 2. GLOBAL BOX UTILITY --- *)
+  | "box" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length arg_vals <> 1 then
+            raise (Error "box expects exactly 1 argument");
+          let raw_val = List.hd arg_vals in
+          let raw_ty = type_of raw_val in
+          let malloc_val = build_malloc raw_ty "box_malloc" builder in
+          ignore (build_store raw_val malloc_val builder);
+          let ptr_ty = pointer_type context in
+          let data_ptr = build_bitcast malloc_val ptr_ty "box_data" builder in
+
+          let type_tag =
+            match classify_type raw_ty with
+            | TypeKind.Integer ->
+                let bw = integer_bitwidth raw_ty in
+                if bw = 1 then 3 else if bw = 8 then 5 else 1
+            | TypeKind.Double -> 2
+            | TypeKind.Pointer -> 4
+            | _ -> 0
+          in
+          let tag_val = const_int (i64_type context) type_tag in
+          let vtable_ptr = build_inttoptr tag_val ptr_ty "box_tag" builder in
+
+          let iface_ty = struct_type context [| ptr_ty; ptr_ty |] in
+          let box_0 =
+            build_insertvalue (const_null iface_ty) data_ptr 0 "box_d" builder
+          in
+          build_insertvalue box_0 vtable_ptr 1 "box_v" builder)
+  (* --- 3. RUNTIME TYPE CHECKER --- *)
+  | "typeOf" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length arg_vals <> 1 then
+            raise (Error "typeOf expects exactly 1 argument");
+          let arg_val = List.hd arg_vals in
+          let ty = type_of arg_val in
+
+          let str_int = build_global_stringptr "int" "s_int" builder in
+          let str_float = build_global_stringptr "float" "s_float" builder in
+          let str_bool = build_global_stringptr "bool" "s_bool" builder in
+          let str_str = build_global_stringptr "string" "s_str" builder in
+          let str_char = build_global_stringptr "char" "s_char" builder in
+          let str_unk = build_global_stringptr "unknown" "s_unk" builder in
+
+          match classify_type ty with
+          | TypeKind.Integer ->
+              let bw = integer_bitwidth ty in
+              if bw = 1 then str_bool else if bw = 8 then str_char else str_int
+          | TypeKind.Double -> str_float
+          | TypeKind.Pointer -> str_str
+          | TypeKind.Struct ->
+              let elems = struct_element_types ty in
+              if
+                Array.length elems = 2
+                && elems.(0) = pointer_type context
+                && elems.(1) = pointer_type context
+              then begin
+                let tag_ptr = build_extractvalue arg_val 1 "tag_ptr" builder in
+                let tag_val =
+                  build_ptrtoint tag_ptr (i64_type context) "tag_val" builder
+                in
+
+                let is_1 =
+                  build_icmp Icmp.Eq tag_val
+                    (const_int (i64_type context) 1)
+                    "is_1" builder
+                in
+                let is_2 =
+                  build_icmp Icmp.Eq tag_val
+                    (const_int (i64_type context) 2)
+                    "is_2" builder
+                in
+                let is_3 =
+                  build_icmp Icmp.Eq tag_val
+                    (const_int (i64_type context) 3)
+                    "is_3" builder
+                in
+                let is_4 =
+                  build_icmp Icmp.Eq tag_val
+                    (const_int (i64_type context) 4)
+                    "is_4" builder
+                in
+                let is_5 =
+                  build_icmp Icmp.Eq tag_val
+                    (const_int (i64_type context) 5)
+                    "is_5" builder
+                in
+
+                let res_5 = build_select is_5 str_char str_unk "res5" builder in
+                let res_4 = build_select is_4 str_str res_5 "res4" builder in
+                let res_3 = build_select is_3 str_bool res_4 "res3" builder in
+                let res_2 = build_select is_2 str_float res_3 "res2" builder in
+                build_select is_1 str_int res_2 "res_final" builder
+              end
+              else
+                begin match struct_name ty with
+                | Some s_name ->
+                    let clean_name =
+                      if String.starts_with ~prefix:"struct." s_name then
+                        String.sub s_name 7 (String.length s_name - 7)
+                      else s_name
+                    in
+                    build_global_stringptr clean_name "s_struct" builder
+                | None -> str_unk
+                end
+          | _ -> str_unk)
+  (* --- 4. PRINTLN LOGIC --- *)
   | "println" | "print" | "printf" ->
       Some
-        (fun context the_module builder fn_name arg_vals ->
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
           let printf_func = get_printf context the_module in
           let printf_ty =
             var_arg_function_type (i32_type context) [| pointer_type context |]
@@ -180,81 +300,4 @@ let get name =
           if fn_name = "println" then print_str "\n";
 
           const_int (i32_type context) 0)
-  | "typeOf" ->
-      Some
-        (fun context the_module builder fn_name arg_vals ->
-          if List.length arg_vals <> 1 then
-            raise (Error "typeOf expects exactly 1 argument");
-          let arg_val = List.hd arg_vals in
-          let ty = type_of arg_val in
-
-          let str_int = build_global_stringptr "int" "s_int" builder in
-          let str_float = build_global_stringptr "float" "s_float" builder in
-          let str_bool = build_global_stringptr "bool" "s_bool" builder in
-          let str_str = build_global_stringptr "string" "s_str" builder in
-          let str_char = build_global_stringptr "char" "s_char" builder in
-          let str_unk = build_global_stringptr "unknown" "s_unk" builder in
-
-          match classify_type ty with
-          | TypeKind.Integer ->
-              let bw = integer_bitwidth ty in
-              if bw = 1 then str_bool else if bw = 8 then str_char else str_int
-          | TypeKind.Double -> str_float
-          | TypeKind.Pointer -> str_str
-          | TypeKind.Struct ->
-              let elems = struct_element_types ty in
-              if
-                Array.length elems = 2
-                && elems.(0) = pointer_type context
-                && elems.(1) = pointer_type context
-              then begin
-                let tag_ptr = build_extractvalue arg_val 1 "tag_ptr" builder in
-                let tag_val =
-                  build_ptrtoint tag_ptr (i64_type context) "tag_val" builder
-                in
-
-                let is_1 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 1)
-                    "is_1" builder
-                in
-                let is_2 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 2)
-                    "is_2" builder
-                in
-                let is_3 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 3)
-                    "is_3" builder
-                in
-                let is_4 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 4)
-                    "is_4" builder
-                in
-                let is_5 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 5)
-                    "is_5" builder
-                in
-
-                let res_5 = build_select is_5 str_char str_unk "res5" builder in
-                let res_4 = build_select is_4 str_str res_5 "res4" builder in
-                let res_3 = build_select is_3 str_bool res_4 "res3" builder in
-                let res_2 = build_select is_2 str_float res_3 "res2" builder in
-                build_select is_1 str_int res_2 "res_final" builder
-              end
-              else
-                begin match struct_name ty with
-                | Some s_name ->
-                    let clean_name =
-                      if String.starts_with ~prefix:"struct." s_name then
-                        String.sub s_name 7 (String.length s_name - 7)
-                      else s_name
-                    in
-                    build_global_stringptr clean_name "s_struct" builder
-                | None -> str_unk
-                end
-          | _ -> str_unk)
   | _ -> None

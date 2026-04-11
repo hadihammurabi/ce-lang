@@ -1,0 +1,18 @@
+trait any{}
+
+fn assert(condition bool) !void {
+  if condition {
+  } else {
+    raise "Assertion failed!"
+  }
+}
+
+fn typeOf(x any) string {
+  return "unknown"
+}
+
+fn alloc[T any](size int) *T {
+  let dummy T
+  return &dummy
+}
+

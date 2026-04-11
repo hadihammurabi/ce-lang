@@ -42,7 +42,20 @@ let resolve_import path_list =
         if Sys.file_exists global_std_path then global_std_path
         else failwith ("Module not found: " ^ String.concat "." path_list)
 
-let rec namespace_expr prefix decls = function
+let rec namespace_type prefix decls = function
+  | TNamed name ->
+      if List.mem name decls then TNamed (prefix ^ "." ^ name) else TNamed name
+  | TGenericInst (name, args) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      TGenericInst (new_name, List.map (namespace_type prefix decls) args)
+  | TPointer ty -> TPointer (namespace_type prefix decls ty)
+  | TArray (n, ty) -> TArray (n, namespace_type prefix decls ty)
+  | TResult ty -> TResult (namespace_type prefix decls ty)
+  | t -> t
+
+and namespace_expr prefix decls = function
   | Add (l, r) ->
       Add (namespace_expr prefix decls l, namespace_expr prefix decls r)
   | Sub (l, r) ->
@@ -74,9 +87,15 @@ let rec namespace_expr prefix decls = function
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
       in
-      Call (new_name, targs, List.map (namespace_expr prefix decls) args)
+      Call
+        ( new_name,
+          List.map (namespace_type prefix decls) targs,
+          List.map (namespace_expr prefix decls) args )
   | Array (n, ty, elems) ->
-      Array (n, ty, List.map (namespace_expr prefix decls) elems)
+      Array
+        ( n,
+          namespace_type prefix decls ty,
+          List.map (namespace_expr prefix decls) elems )
   | If (cond, then_b, elifs, else_b) ->
       If
         ( namespace_expr prefix decls cond,
@@ -93,6 +112,14 @@ let rec namespace_expr prefix decls = function
           id,
           ty,
           List.map (namespace_stmt prefix decls) stmts )
+  | Struct (name, targs, fields) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      Struct
+        ( new_name,
+          List.map (namespace_type prefix decls) targs,
+          List.map (fun (n, e) -> (n, namespace_expr prefix decls e)) fields )
   | e -> e
 
 and namespace_stmt prefix decls = function
@@ -113,7 +140,7 @@ and namespace_stmt prefix decls = function
         | Some e -> Some (namespace_expr prefix decls e)
         | None -> None
       in
-      DefLet (name, is_mut, ty, new_e)
+      DefLet (name, is_mut, namespace_type prefix decls ty, new_e)
   | Assign (name, e) -> Assign (name, namespace_expr prefix decls e)
   | ArrayAssign (name, idx, e) ->
       ArrayAssign
@@ -130,6 +157,40 @@ and namespace_stmt prefix decls = function
         if List.mem name decls then prefix ^ "." ^ name else name
       in
       DefInterface (new_name, sigs)
+  | DefStruct (name, params, fields) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      let s_fields =
+        List.map
+          (fun f -> { f with ty = namespace_type prefix decls f.ty })
+          fields
+      in
+      DefStruct (new_name, params, s_fields)
+  | Impl (name, params, methods) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      let s_methods =
+        List.map
+          (fun (m_name, self_id, m_params, ret_ty, body) ->
+            let s_params =
+              List.map
+                (fun p ->
+                  {
+                    param_name = p.param_name;
+                    ty = namespace_type prefix decls p.ty;
+                  })
+                m_params
+            in
+            ( m_name,
+              self_id,
+              s_params,
+              namespace_type prefix decls ret_ty,
+              List.map (namespace_stmt prefix decls) body ))
+          methods
+      in
+      Impl (new_name, params, s_methods)
   | s -> s
 
 let rec process_file_inner visited filepath namespace_prefix =
@@ -141,7 +202,11 @@ let rec process_file_inner visited filepath namespace_prefix =
     let decls =
       List.fold_left
         (fun acc stmt ->
-          match stmt with DefFN (name, _, _, _, _) -> name :: acc | _ -> acc)
+          match stmt with
+          | DefFN (name, _, _, _, _) -> name :: acc
+          | DefStruct (name, _, _) -> name :: acc
+          | DefInterface (name, _) -> name :: acc
+          | _ -> acc)
         [] ast
     in
 
