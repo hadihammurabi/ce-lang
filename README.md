@@ -97,7 +97,7 @@ Ce 0.1.0                                                                   CE(1)
 
 ```ce
 fn main() void {
-  var x int = 5
+  let x int = 5
   println(x)
 }
 ```
@@ -105,9 +105,35 @@ fn main() void {
 ### Functions
 
 ```ce
-fn add() int {
-  return  5 + 10
+fn add(a int, b int) int {
+  return a + b
 }
+```
+
+### Slices
+```ce
+import slice
+
+fn main() !void {
+  let mut x slice.Slice[int] = slice.Slice[int]{ptr = alloc[int](3); len = 0; cap = 3}
+  
+  x = x.append(1)
+  x = x.append(3)
+  x = x.append(8)
+
+  println(x.get(0) catch (e) int { return 0 })
+  println(x.get(1) catch (e) int { return 0 })
+  println(x.get(2) catch (e) int { return 0 })
+  println(x.get(3) catch (e) int { return 0 })
+  println(x.get(4) catch (e) !int { raise e })
+}
+
+output:
+1
+3
+8
+0
+Uncaught Error: unbound index
 ```
 
 ## Development
