@@ -66,6 +66,7 @@ type expr =
 
 and param = { param_name : string; ty : types }
 and struct_field = { field_name : string; ty : types }
+and fn_signature = { fn_name : string; params : param list; ret_ty : types }
 
 and stmt =
   | Expr of expr
@@ -86,3 +87,4 @@ and stmt =
   | Break
   | Import of string list
   | Raise of expr
+  | DefInterface of string * fn_signature list

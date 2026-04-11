@@ -21,7 +21,12 @@ let rec llvm_type_of = function
       | None -> (
           match Hashtbl.find_opt struct_registry name with
           | Some (llty, _) -> llty
-          | None -> raise (Error ("Undefined type: " ^ name))))
+          | None -> (
+              match Hashtbl.find_opt interface_registry name with
+              | Some _ ->
+                  struct_type ce_ctx
+                    [| pointer_type ce_ctx; pointer_type ce_ctx |]
+              | None -> raise (Error ("Undefined type: " ^ name)))))
   | TStruct name ->
       let llty, _ = Hashtbl.find struct_registry name in
       llty
@@ -256,14 +261,17 @@ and codegen_expr = function
                   String.sub name (last_dot_idx + 1)
                     (String.length name - last_dot_idx - 1)
                 in
-                
+
                 if Hashtbl.mem struct_registry base_path then
                   let mangled_name = base_path ^ "::" ^ method_name in
                   let callee =
                     match lookup_function mangled_name ce_module with
                     | Some c -> c
                     | None ->
-                        raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ base_path ^ "'"))
+                        raise
+                          (Error
+                             ("Unknown method '" ^ method_name ^ "' on struct '"
+                            ^ base_path ^ "'"))
                   in
                   let ft = Hashtbl.find function_types mangled_name in
                   let args_val = Array.of_list (List.map codegen_expr args) in
@@ -284,18 +292,23 @@ and codegen_expr = function
                         match lookup_function mangled_name ce_module with
                         | Some c -> c
                         | None ->
-                            raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ clean_name ^ "'"))
+                            raise
+                              (Error
+                                 ("Unknown method '" ^ method_name
+                                ^ "' on struct '" ^ clean_name ^ "'"))
                       in
                       let ft = Hashtbl.find function_types mangled_name in
                       let compiled_args = List.map codegen_expr args in
-                      let all_args = Array.of_list (self_val :: compiled_args) in
+                      let all_args =
+                        Array.of_list (self_val :: compiled_args)
+                      in
                       build_call ft callee all_args "methodcalltmp" ce_builder
                   | None ->
-                      raise (Error ("Cannot call method '" ^ method_name ^ "' on a non-struct type"))
-              else
-                raise (Error ("Unknown function: " ^ name))
-      )
-  )
+                      raise
+                        (Error
+                           ("Cannot call method '" ^ method_name
+                          ^ "' on a non-struct type"))
+              else raise (Error ("Unknown function: " ^ name))))
   | Array (n, ty, elems) ->
       let elem_ty = llvm_type_of ty in
       let arr_ty = array_type elem_ty n in
@@ -699,6 +712,9 @@ and codegen_stmt = function
       in
       let s2 = build_insertvalue s1 err_msg 2 "err_msg" ce_builder in
       ignore (build_ret s2 ce_builder);
+      const_null (void_type ce_ctx)
+  | DefInterface (name, sigs) ->
+      Hashtbl.add interface_registry name sigs;
       const_null (void_type ce_ctx)
 
 let optimize the_module =

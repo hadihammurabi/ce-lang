@@ -120,6 +120,11 @@ and namespace_stmt prefix decls = function
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
   | For stmts -> For (List.map (namespace_stmt prefix decls) stmts)
   | Raise e -> Raise (namespace_expr prefix decls e)
+  | DefInterface (name, sigs) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      DefInterface (new_name, sigs)
   | s -> s
 
 let rec process_file_inner visited filepath namespace_prefix =

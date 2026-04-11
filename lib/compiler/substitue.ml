@@ -95,5 +95,23 @@ and substitute_stmt type_map = function
           substitute_type type_map ret_ty,
           List.map (substitute_stmt type_map) body )
   | Raise e -> Raise (substitute_expr type_map e)
+  | DefInterface (name, sigs) ->
+      let s_sigs =
+        List.map
+          (fun s ->
+            {
+              fn_name = s.fn_name;
+              params =
+                List.map
+                  (fun p ->
+                    {
+                      param_name = p.param_name;
+                      ty = substitute_type type_map p.ty;
+                    })
+                  s.params;
+              ret_ty = substitute_type type_map s.ret_ty;
+            })
+          sigs
+      in
+      DefInterface (name, s_sigs)
   | s -> s
-

@@ -24,6 +24,9 @@ let impl_templates :
 let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
   Hashtbl.create 10
 
+let interface_registry : (string, fn_signature list) Hashtbl.t =
+  Hashtbl.create 10
+
 let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
 let current_fn_is_res = ref false
 let current_fn_ret_ty = ref (void_type ce_ctx)
