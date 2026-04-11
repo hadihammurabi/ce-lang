@@ -55,7 +55,7 @@ rule tokenize = parse
   | "raise"            { expr_cont RAISE }
   | "catch"            { expr_cont CATCH }
   | "struct"           { expr_cont STRUCT }
-  | "interface"        { expr_cont INTERFACE }
+  | "trait"            { expr_cont TRAIT }
   | alpha alnum* { expr_end (IDENT (Lexing.lexeme lexbuf)) }
 
   | '"'                { 

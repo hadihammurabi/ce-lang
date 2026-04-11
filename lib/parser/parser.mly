@@ -8,7 +8,7 @@
 %token <char>   CHAR
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR BANG
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP SEMICOLON
-%token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL RAISE CATCH STRUCT INTERFACE
+%token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL RAISE CATCH STRUCT TRAIT
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
@@ -44,7 +44,7 @@ global_stmt:
   | def_let         { $1 }
   | def_type        { $1 }
   | def_struct      { $1 }
-  | def_interface   { $1 }
+  | def_trait   { $1 }
   | IMPORT path = module_path { Import path }
   | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
@@ -54,7 +54,7 @@ stmt:
   | def_let         { $1 }
   | def_type        { $1 }
   | def_struct      { $1 }
-  | def_interface   { $1 }
+  | def_trait   { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
   | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
   | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
@@ -125,9 +125,9 @@ def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
 
 def_struct:
-  | TYPE name = IDENT params = generic_params_opt STRUCT LBRACE sep_opt RBRACE 
+  | STRUCT name = IDENT params = generic_params_opt LBRACE sep_opt RBRACE 
     { DefStruct (name, params, []) }
-  | TYPE name = IDENT params = generic_params_opt STRUCT LBRACE sep_opt fields = struct_field_list RBRACE 
+  | STRUCT name = IDENT params = generic_params_opt LBRACE sep_opt fields = struct_field_list RBRACE 
     { DefStruct (name, params, fields) }
 
 struct_field_list:
@@ -176,10 +176,10 @@ impl_method:
   | FN name = IDENT LPAREN self_id = IDENT COMMA params = separated_list(COMMA, param) RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
     { (name, self_id, params, ret_ty, body) }
 
-def_interface:
-  | TYPE name = IDENT INTERFACE LBRACE sep_opt RBRACE 
+def_trait:
+  | TRAIT name = IDENT LBRACE sep_opt RBRACE 
       { DefInterface (name, []) }
-  | TYPE name = IDENT INTERFACE LBRACE sep_opt sigs = fn_signature_list RBRACE 
+  | TRAIT name = IDENT LBRACE sep_opt sigs = fn_signature_list RBRACE 
       { DefInterface (name, sigs) }
 
 fn_signature_list:
