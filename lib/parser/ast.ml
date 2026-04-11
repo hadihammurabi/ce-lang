@@ -68,7 +68,7 @@ and struct_field = { field_name : string; ty : types }
 and stmt =
   | Expr of expr
   | DefFN of string * param list * types * stmt list
-  | DefLet of string * bool * types * expr
+  | DefLet of string * bool * types * expr option
   | DefType of string * types
   | DefStruct of string * (string * types) list * struct_field list
   | Assign of string * expr

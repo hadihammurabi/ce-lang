@@ -72,8 +72,10 @@ stmt_list:
   | stmt sep stmt_list    { $1 :: $3 }
 
 def_let:
-  | LET name = IDENT ty = types EQUALS e = expr { DefLet (name, false, ty, e) }
-  | LET MUT name = IDENT ty = types EQUALS e = expr { DefLet (name, true, ty, e) }
+  | LET name = IDENT ty = types EQUALS e = expr { DefLet (name, false, ty, Some e) }
+  | LET MUT name = IDENT ty = types EQUALS e = expr { DefLet (name, true, ty, Some e) }
+  | LET name = IDENT ty = types                 { DefLet (name, false, ty, None) }
+  | LET MUT name = IDENT ty = types             { DefLet (name, true, ty, None) }
 
 type_scalar:
   | TYPE_VOID  { TVoid }

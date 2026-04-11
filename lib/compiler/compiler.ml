@@ -83,8 +83,12 @@ and substitute_expr type_map = function
 and substitute_stmt type_map = function
   | Expr e -> Expr (substitute_expr type_map e)
   | DefLet (name, is_mut, ty, e) ->
+      let new_e = match e with 
+        | Some ee -> Some (substitute_expr type_map ee) 
+        | None -> None 
+      in
       DefLet
-        (name, is_mut, substitute_type type_map ty, substitute_expr type_map e)
+        (name, is_mut, substitute_type type_map ty, new_e)
   | Assign (name, e) -> Assign (name, substitute_expr type_map e)
   | ArrayAssign (name, idx, e) ->
       ArrayAssign
@@ -562,14 +566,18 @@ and codegen_stmt = function
   | Expr e ->
       ignore (codegen_expr e);
       const_null (void_type ce_ctx)
-  | DefLet (name, ismut, ty, expr) ->
-      let init_val = codegen_expr expr in
+  | DefLet (name, ismut, ty, expr_opt) ->
+      let ll_ty = llvm_type_of ty in
+      let init_val = 
+        match expr_opt with
+        | Some expr -> codegen_expr expr
+        | None -> const_null ll_ty
+      in
       let the_function = block_parent (insertion_block ce_builder) in
       let ce_builder_alloca =
         builder_at ce_ctx (instr_begin (entry_block the_function))
       in
 
-      let ll_ty = llvm_type_of ty in
       let alloca = build_alloca ll_ty name ce_builder_alloca in
       ignore (build_store init_val alloca ce_builder);
 

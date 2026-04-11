@@ -97,7 +97,11 @@ and namespace_stmt prefix decls = function
       in
       DefFN (new_name, params, ty, List.map (namespace_stmt prefix decls) body)
   | DefLet (name, is_mut, ty, e) ->
-      DefLet (name, is_mut, ty, namespace_expr prefix decls e)
+      let new_e = match e with 
+        | Some e -> Some (namespace_expr prefix decls e) 
+        | None -> None 
+      in
+      DefLet (name, is_mut, ty, new_e)
   | Assign (name, e) -> Assign (name, namespace_expr prefix decls e)
   | ArrayAssign (name, idx, e) ->
       ArrayAssign
