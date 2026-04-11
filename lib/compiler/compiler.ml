@@ -4,7 +4,10 @@ open Ce_parser.Ast
 exception Error of string
 
 let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
-let named_values : (string, llvalue * types * bool) Hashtbl.t = Hashtbl.create 10
+
+let named_values : (string, llvalue * types * bool) Hashtbl.t =
+  Hashtbl.create 10
+
 let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
 
 let struct_templates :
@@ -22,6 +25,8 @@ let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
   Hashtbl.create 10
 
 let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
+let current_fn_is_res = ref false
+let current_fn_ret_ty = ref (void_type ce_ctx)
 
 let rec substitute_type type_map = function
   | TGenericParam name -> (
@@ -32,6 +37,7 @@ let rec substitute_type type_map = function
   | TArray (n, ty) -> TArray (n, substitute_type type_map ty)
   | TGenericInst (name, args) ->
       TGenericInst (name, List.map (substitute_type type_map) args)
+  | TResult ty -> TResult (substitute_type type_map ty)
   | other -> other
 
 and substitute_expr type_map = function
@@ -78,17 +84,23 @@ and substitute_expr type_map = function
         | Some b -> Some (List.map (substitute_stmt type_map) b)
       in
       If (s_cond, s_then, s_elifs, s_else)
+  | Catch (e, id, ty, stmts) ->
+      Catch
+        ( substitute_expr type_map e,
+          id,
+          substitute_type type_map ty,
+          List.map (substitute_stmt type_map) stmts )
   | e -> e
 
 and substitute_stmt type_map = function
   | Expr e -> Expr (substitute_expr type_map e)
   | DefLet (name, is_mut, ty, e) ->
-      let new_e = match e with 
-        | Some ee -> Some (substitute_expr type_map ee) 
-        | None -> None 
+      let new_e =
+        match e with
+        | Some ee -> Some (substitute_expr type_map ee)
+        | None -> None
       in
-      DefLet
-        (name, is_mut, substitute_type type_map ty, new_e)
+      DefLet (name, is_mut, substitute_type type_map ty, new_e)
   | Assign (name, e) -> Assign (name, substitute_expr type_map e)
   | ArrayAssign (name, idx, e) ->
       ArrayAssign
@@ -110,6 +122,7 @@ and substitute_stmt type_map = function
           s_params,
           substitute_type type_map ret_ty,
           List.map (substitute_stmt type_map) body )
+  | Raise e -> Raise (substitute_expr type_map e)
   | s -> s
 
 let rec llvm_type_of = function
@@ -134,6 +147,10 @@ let rec llvm_type_of = function
   | TUnknown -> raise (Error "Cannot compile unknown type")
   | TGenericParam name ->
       raise (Error ("Uninstantiated generic parameter '" ^ name))
+  | TResult ty ->
+      let inner = llvm_type_of ty in
+      let ok_ty = if inner = void_type ce_ctx then i1_type ce_ctx else inner in
+      struct_type ce_ctx [| i1_type ce_ctx; ok_ty; pointer_type ce_ctx |]
   | TGenericInst (name, arg_types) -> (
       let mangled_name =
         name ^ "_" ^ String.concat "_" (List.map show_types arg_types)
@@ -279,14 +296,15 @@ and codegen_expr = function
         | None -> raise (Error ("Unknown variable: " ^ base_name))
       else
         match Hashtbl.find_opt named_values name with
-        | Some (v, ast_ty, _) -> build_load (llvm_type_of ast_ty) v name ce_builder
+        | Some (v, ast_ty, _) ->
+            build_load (llvm_type_of ast_ty) v name ce_builder
         | None -> raise (Error ("Unknown variable: " ^ name)))
   | Ref (Let name) ->
       let ptr_val, _, _ = Hashtbl.find named_values name in
       ptr_val
   | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
   | Deref (Let name) ->
-      let ptr_to_ptr, ast_ty ,_= Hashtbl.find named_values name in
+      let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
       let inner_ty =
         match ast_ty with
         | TPointer t -> t
@@ -561,6 +579,61 @@ and codegen_expr = function
         fields;
 
       build_load llty alloc "structload" ce_builder
+  | Catch (expr, err_name, catch_ty, body) ->
+      let res_val = codegen_expr expr in
+      let is_err = build_extractvalue res_val 0 "is_err" ce_builder in
+
+      let the_func = block_parent (insertion_block ce_builder) in
+      let err_bb = append_block ce_ctx "catch_err" the_func in
+      let ok_bb = append_block ce_ctx "catch_ok" the_func in
+      let merge_bb = append_block ce_ctx "catch_merge" the_func in
+
+      ignore (build_cond_br is_err err_bb ok_bb ce_builder);
+
+      position_at_end err_bb ce_builder;
+      let err_str = build_extractvalue res_val 2 "err_str" ce_builder in
+      let err_alloc = build_alloca (pointer_type ce_ctx) err_name ce_builder in
+      ignore (build_store err_str err_alloc ce_builder);
+
+      let old_val_opt = Hashtbl.find_opt named_values err_name in
+      Hashtbl.add named_values err_name (err_alloc, TString, false);
+
+      let catch_ty_ll = llvm_type_of catch_ty in
+      let catch_val = ref (const_null catch_ty_ll) in
+
+      List.iter
+        (fun s ->
+          match s with
+          | Return e -> catch_val := codegen_expr e
+          | _ -> ignore (codegen_stmt s))
+        body;
+
+      Hashtbl.remove named_values err_name;
+      (match old_val_opt with
+      | Some v -> Hashtbl.add named_values err_name v
+      | None -> ());
+
+      let err_end_bb = insertion_block ce_builder in
+      let err_has_term =
+        match block_terminator err_end_bb with None -> false | Some _ -> true
+      in
+      if not err_has_term then ignore (build_br merge_bb ce_builder);
+
+      position_at_end ok_bb ce_builder;
+      let ok_val =
+        if catch_ty_ll = void_type ce_ctx then const_null (void_type ce_ctx)
+        else build_extractvalue res_val 1 "ok_val" ce_builder
+      in
+      let ok_end_bb = insertion_block ce_builder in
+      ignore (build_br merge_bb ce_builder);
+
+      position_at_end merge_bb ce_builder;
+      if catch_ty_ll = void_type ce_ctx then const_null (void_type ce_ctx)
+      else if not err_has_term then
+        build_phi
+          [ (!catch_val, err_end_bb); (ok_val, ok_end_bb) ]
+          "catch_res" ce_builder
+      else ok_val
 
 and codegen_stmt = function
   | Expr e ->
@@ -568,7 +641,7 @@ and codegen_stmt = function
       const_null (void_type ce_ctx)
   | DefLet (name, ismut, ty, expr_opt) ->
       let ll_ty = llvm_type_of ty in
-      let init_val = 
+      let init_val =
         match expr_opt with
         | Some expr -> codegen_expr expr
         | None -> const_null ll_ty
@@ -612,8 +685,11 @@ and codegen_stmt = function
 
           match Hashtbl.find_opt named_values base_name with
           | Some (v, ast_ty, ismut) ->
-              if not ismut then 
-                raise (Error ("Cannot assign to property of immutable variable '" ^ base_name ^ "'"));
+              if not ismut then
+                raise
+                  (Error
+                     ("Cannot assign to property of immutable variable '"
+                    ^ base_name ^ "'"));
 
               let rec get_gep current_ptr current_ty props =
                 match props with
@@ -671,8 +747,10 @@ and codegen_stmt = function
                 (Error ("Variable not defined for assignment: " ^ base_name))
         else
           match Hashtbl.find_opt named_values name with
-          | Some (v, _, ismut) -> if not ismut then 
-                raise (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
+          | Some (v, _, ismut) ->
+              if not ismut then
+                raise
+                  (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
               v
           | None ->
               raise (Error ("Variable not defined for assignment: " ^ name))
@@ -682,7 +760,8 @@ and codegen_stmt = function
   | ArrayAssign (name, index_expr, val_expr) ->
       let array_ptr_val, array_ty =
         match Hashtbl.find_opt named_values name with
-        | Some (v, ty, ismut) -> if not ismut then 
+        | Some (v, ty, ismut) ->
+            if not ismut then
               raise (Error ("Cannot assign to immutable array '" ^ name ^ "'"));
             (v, ty)
         | None ->
@@ -702,7 +781,7 @@ and codegen_stmt = function
       ignore (build_store val_to_store element_ptr ce_builder);
       val_to_store
   | DerefAssign (Let name, val_expr) ->
-      let ptr_to_ptr, ast_ty ,_= Hashtbl.find named_values name in
+      let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
       let _ =
         match ast_ty with
         | TPointer t -> t
@@ -716,13 +795,21 @@ and codegen_stmt = function
       val_to_store
   | DerefAssign _ -> raise (Error "Can only assign to variable pointers")
   | DefFN (name, params, ret_ty, body) ->
+      let actual_name = if name = "main" then "__ce_main" else name in
+
+      let was_res = !current_fn_is_res in
+      let was_ret_ty = !current_fn_ret_ty in
+
+      (current_fn_is_res := match ret_ty with TResult _ -> true | _ -> false);
+      current_fn_ret_ty := llvm_type_of ret_ty;
+
       let param_types =
         Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
       in
       let ft = function_type (llvm_type_of ret_ty) param_types in
-      Hashtbl.add function_types name ft;
+      Hashtbl.add function_types actual_name ft;
 
-      let f = declare_function name ft ce_module in
+      let f = declare_function actual_name ft ce_module in
       let bb = append_block ce_ctx "entry" f in
       position_at_end bb ce_builder;
 
@@ -744,12 +831,60 @@ and codegen_stmt = function
       | Some _ -> ()
       | None ->
           if ret_ty = TVoid then ignore (build_ret_void ce_builder)
+          else if !current_fn_is_res then begin
+            let r_ty = !current_fn_ret_ty in
+            let s1 =
+              build_insertvalue (const_null r_ty)
+                (const_int (i1_type ce_ctx) 0)
+                0 "res_ok" ce_builder
+            in
+            ignore (build_ret s1 ce_builder)
+          end
           else
             raise
               (Error ("Function '" ^ name ^ "' is missing a return statement")));
 
       Hashtbl.clear named_values;
       Hashtbl.iter (fun k v -> Hashtbl.add named_values k v) old_named_values;
+
+      current_fn_is_res := was_res;
+      current_fn_ret_ty := was_ret_ty;
+
+      if name = "main" then begin
+        let c_main_ty = function_type (i32_type ce_ctx) [||] in
+        let c_main_f = declare_function "main" c_main_ty ce_module in
+        let c_bb = append_block ce_ctx "entry" c_main_f in
+        let c_builder = builder_at_end ce_ctx c_bb in
+
+        let call_res = build_call ft f [||] "main_call" c_builder in
+
+        if match ret_ty with TResult _ -> true | _ -> false then begin
+          let is_err = build_extractvalue call_res 0 "is_err" c_builder in
+          let err_bb = append_block ce_ctx "err" c_main_f in
+          let ok_bb = append_block ce_ctx "ok" c_main_f in
+
+          ignore (build_cond_br is_err err_bb ok_bb c_builder);
+
+          position_at_end err_bb c_builder;
+          let err_msg = build_extractvalue call_res 2 "err_msg" c_builder in
+          let printf_f = Builtin.get_printf ce_ctx ce_module in
+          let fmt_str =
+            build_global_stringptr "Uncaught Error: %s\n" "err_fmt" c_builder
+          in
+          ignore
+            (build_call
+               (var_arg_function_type (i32_type ce_ctx)
+                  [| pointer_type ce_ctx |])
+               printf_f [| fmt_str; err_msg |] "printf_call" c_builder);
+          ignore (build_ret (const_int (i32_type ce_ctx) 1) c_builder);
+
+          position_at_end ok_bb c_builder;
+          ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
+        end
+        else begin
+          ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
+        end
+      end;
       f
   | Block stmts ->
       List.iter (fun s -> ignore (codegen_stmt s)) stmts;
@@ -775,7 +910,26 @@ and codegen_stmt = function
       let exit_block = Stack.top loop_exit_blocks in
       ignore (build_br exit_block ce_builder);
       const_null (void_type ce_ctx)
-  | Return e -> build_ret (codegen_expr e) ce_builder
+  | Return e ->
+      let v = codegen_expr e in
+      if !current_fn_is_res then begin
+        let ret_ty = !current_fn_ret_ty in
+        let s1 =
+          build_insertvalue (const_null ret_ty)
+            (const_int (i1_type ce_ctx) 0)
+            0 "ok_flag" ce_builder
+        in
+        let s2 =
+          if type_of v = void_type ce_ctx then s1
+          else build_insertvalue s1 v 1 "ok_val" ce_builder
+        in
+        ignore (build_ret s2 ce_builder);
+        const_null (void_type ce_ctx)
+      end
+      else begin
+        ignore (build_ret v ce_builder);
+        const_null (void_type ce_ctx)
+      end
   | Import _ -> const_null (void_type ce_ctx)
   | Impl (name, params, methods) ->
       if List.length params > 0 then begin
@@ -793,6 +947,17 @@ and codegen_stmt = function
           methods;
         const_null (void_type ce_ctx)
       end
+  | Raise e ->
+      let err_msg = codegen_expr e in
+      let ret_ty = !current_fn_ret_ty in
+      let s1 =
+        build_insertvalue (const_null ret_ty)
+          (const_int (i1_type ce_ctx) 1)
+          0 "err_flag" ce_builder
+      in
+      let s2 = build_insertvalue s1 err_msg 2 "err_msg" ce_builder in
+      ignore (build_ret s2 ce_builder);
+      const_null (void_type ce_ctx)
 
 let optimize the_module =
   ignore (Llvm_all_backends.initialize ());

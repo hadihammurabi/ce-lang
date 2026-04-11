@@ -87,6 +87,12 @@ let rec namespace_expr prefix decls = function
                 List.map (namespace_stmt prefix decls) b ))
             elifs,
           Option.map (List.map (namespace_stmt prefix decls)) else_b )
+  | Catch (e, id, ty, stmts) ->
+      Catch
+        ( namespace_expr prefix decls e,
+          id,
+          ty,
+          List.map (namespace_stmt prefix decls) stmts )
   | e -> e
 
 and namespace_stmt prefix decls = function
@@ -97,9 +103,10 @@ and namespace_stmt prefix decls = function
       in
       DefFN (new_name, params, ty, List.map (namespace_stmt prefix decls) body)
   | DefLet (name, is_mut, ty, e) ->
-      let new_e = match e with 
-        | Some e -> Some (namespace_expr prefix decls e) 
-        | None -> None 
+      let new_e =
+        match e with
+        | Some e -> Some (namespace_expr prefix decls e)
+        | None -> None
       in
       DefLet (name, is_mut, ty, new_e)
   | Assign (name, e) -> Assign (name, namespace_expr prefix decls e)
@@ -112,6 +119,7 @@ and namespace_stmt prefix decls = function
   | Return e -> Return (namespace_expr prefix decls e)
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
   | For stmts -> For (List.map (namespace_stmt prefix decls) stmts)
+  | Raise e -> Raise (namespace_expr prefix decls e)
   | s -> s
 
 let rec process_file_inner visited filepath namespace_prefix =

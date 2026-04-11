@@ -12,6 +12,7 @@ type types =
   | TPointer of types
   | TNamed of string
   | TStruct of string
+  | TResult of types
   | TInt
   | TFloat
   | TUnknown
@@ -36,6 +37,7 @@ type expr =
   | String of string
   | Char of char
   | Ref of expr
+  | Catch of expr * string * types * stmt list
   | Deref of expr
   | Bool of bool
   | Int of int
@@ -75,8 +77,7 @@ and stmt =
   | Impl of
       string
       * (string * types) list
-      * (string * string * param list * types * stmt list)
-        list
+      * (string * string * param list * types * stmt list) list
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr
   | Return of expr
@@ -84,3 +85,4 @@ and stmt =
   | For of stmt list
   | Break
   | Import of string list
+  | Raise of expr

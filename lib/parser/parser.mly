@@ -6,9 +6,9 @@
 %token <float>  FLOAT
 %token <string> STRING IDENT
 %token <char>   CHAR
-%token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR
+%token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR BANG
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP SEMICOLON
-%token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL
+%token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL RAISE CATCH
 %token          TYPE_BOOL TRUE FALSE
 %token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
 %token          LET MUT FN IF ELSE FOR
@@ -50,6 +50,7 @@ stmt:
   | IMPORT path = module_path { Import path }
   | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
+  | RAISE e = expr  { Raise e }  /* ADDED: raise expr */
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -91,6 +92,7 @@ types:
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
   | STAR ty = types                       { TPointer ty }
   | name = IDENT LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
+  | BANG ty = types                       { TResult ty }  /* ADDED: !T */
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -174,6 +176,8 @@ expr_simple:
     { Struct (name, [ty], []) }
   | name = IDENT LBRACKET ty = types RBRACKET LBRACE sep_opt fields = struct_init_list RBRACE
     { Struct (name, [ty], fields) }
+  | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
+    { Catch(e, id, ty, body) }  /* Add this line */
 
 expr:
   | e = expr_simple               { e }

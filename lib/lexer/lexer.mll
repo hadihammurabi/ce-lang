@@ -52,6 +52,8 @@ rule tokenize = parse
   | "import"           { expr_cont IMPORT }
   | "type"             { expr_cont TYPE }
   | "impl"             { expr_cont IMPL }
+  | "raise"            { expr_cont RAISE }
+  | "catch"            { expr_cont CATCH }
   | alpha alnum* { expr_end (IDENT (Lexing.lexeme lexbuf)) }
 
   | '"'                { 
@@ -82,6 +84,7 @@ rule tokenize = parse
   | "."                { expr_cont DOT }
   | "&"                { expr_cont AMP }
   | ";"                { expr_cont SEMICOLON }
+  | "!"                { expr_cont BANG }
 
   | "=="               { expr_cont EQEQ }
   | "<="               { expr_cont LTE }
