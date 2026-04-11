@@ -72,13 +72,13 @@ block:
   | LBRACE sep_opt stmt_list RBRACE   { $3 }
 
 stmt_if:
-  | IF e = expr body = block tail = stmt_if_tail
+  | IF e = expr_no_struct body = block tail = stmt_if_tail
     { let (elif_branches, else_body) = tail in 
       ( If (e, body, elif_branches, else_body) ) }
 
 stmt_if_tail:
   | { ([], None) }
-  | ELSE IF e = expr body = block tail = stmt_if_tail 
+  | ELSE IF e = expr_no_struct body = block tail = stmt_if_tail 
       { let (elif_branches, else_body) = tail in ((e, body) :: elif_branches, else_body) }
   | ELSE body = block { ([], Some body) }
 
@@ -202,20 +202,25 @@ expr_simple:
   | f = FLOAT                                                     { Float f }
   | s = STRING                                                    { String s }
   | c = CHAR                                                      { Char c }
-  | name = IDENT LBRACKET idx = expr RBRACKET                     { ArrayAccess (name, idx) }
   | id = path                                                     { Let id }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
-  | name = IDENT DOT LBRACE sep_opt RBRACE                            { Struct (name, [], []) }
-  | name = IDENT DOT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, [], fields) }
-  | name = IDENT LBRACKET ty = types RBRACKET DOT LBRACE sep_opt RBRACE
-    { Struct (name, [ty], []) }
-  | name = IDENT LBRACKET ty = types RBRACKET DOT LBRACE sep_opt fields = struct_init_list RBRACE
-    { Struct (name, [ty], fields) }
+  | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
+  
+  | name = path LBRACE sep_opt RBRACE                             { Struct (name, [], []) }
+  | name = path LBRACE sep_opt fields = struct_init_list RBRACE   { Struct (name, [], fields) }
+  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
+
+  | id = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LPAREN args = separated_list(COMMA, expr) RPAREN 
+    { Call(id, targs, args) }
+  | name = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LBRACE sep_opt RBRACE
+    { Struct (name, targs, []) }
+  | name = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LBRACE sep_opt fields = struct_init_list RBRACE
+    { Struct (name, targs, fields) }
+
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
     { Catch(e, id, ty, body) }
-  | id = path targs = generic_args_opt LPAREN args = separated_list(COMMA, expr) RPAREN { Call(id, targs, args) }
 
 expr:
   | e = expr_simple               { e }
@@ -233,3 +238,37 @@ expr:
   | l = expr OR    r = expr       {  Or (l, r) }
   | stmt_if { $1 }
   
+expr_simple_no_struct:
+  | a = array                                                     { a }
+  | LPAREN e = expr RPAREN                                        { e }
+  | TRUE                                                          { Bool true }
+  | FALSE                                                         { Bool false }
+  | n = INT                                                       { Int n }
+  | f = FLOAT                                                     { Float f }
+  | s = STRING                                                    { String s }
+  | c = CHAR                                                      { Char c }
+  | id = path                                                     { Let id }
+  | MINUS e = expr_no_struct %prec UMINUS                         { Neg e }
+  | AMP e = expr_simple_no_struct                                 { Ref e }
+  | STAR e = expr_simple_no_struct                                { Deref e }
+  | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
+  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
+  | id = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LPAREN args = separated_list(COMMA, expr) RPAREN 
+    { Call(id, targs, args) }
+
+expr_no_struct:
+  | e = expr_simple_no_struct                     { e }
+  | l = expr_no_struct PLUS  r = expr_no_struct   { Add (l, r) }
+  | l = expr_no_struct MINUS r = expr_no_struct   { Sub (l, r) }
+  | l = expr_no_struct STAR  r = expr_no_struct   { Mul (l, r) }
+  | l = expr_no_struct SLASH r = expr_no_struct   { Div (l, r) }
+  | l = expr_no_struct MOD   r = expr_no_struct   { Mod (l, r) }
+  | l = expr_no_struct EQEQ  r = expr_no_struct   { Eq (l, r) }
+  | l = expr_no_struct LT    r = expr_no_struct   { Lt (l, r) }
+  | l = expr_no_struct LTE   r = expr_no_struct   { Lte (l, r) }
+  | l = expr_no_struct GT    r = expr_no_struct   { Gt (l, r) }
+  | l = expr_no_struct GTE   r = expr_no_struct   { Gte (l, r) }
+  | l = expr_no_struct AND   r = expr_no_struct   { And (l, r) }
+  | l = expr_no_struct OR    r = expr_no_struct   { Or (l, r) }
+  | stmt_if { $1 }
+
