@@ -1,129 +1,10 @@
 open Llvm
 open Ce_parser.Ast
+open State
+open Utils
+open Substitue
 
 exception Error of string
-
-let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
-
-let named_values : (string, llvalue * types * bool) Hashtbl.t =
-  Hashtbl.create 10
-
-let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
-
-let struct_templates :
-    (string, (string * types) list * struct_field list) Hashtbl.t =
-  Hashtbl.create 10
-
-let impl_templates :
-    ( string,
-      (string * types) list
-      * (string * string * param list * types * stmt list) list )
-    Hashtbl.t =
-  Hashtbl.create 10
-
-let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
-  Hashtbl.create 10
-
-let loop_exit_blocks : llbasicblock Stack.t = Stack.create ()
-let current_fn_is_res = ref false
-let current_fn_ret_ty = ref (void_type ce_ctx)
-
-let rec substitute_type type_map = function
-  | TGenericParam name -> (
-      try List.assoc name type_map with Not_found -> TGenericParam name)
-  | TNamed name -> (
-      try List.assoc name type_map with Not_found -> TNamed name)
-  | TPointer ty -> TPointer (substitute_type type_map ty)
-  | TArray (n, ty) -> TArray (n, substitute_type type_map ty)
-  | TGenericInst (name, args) ->
-      TGenericInst (name, List.map (substitute_type type_map) args)
-  | TResult ty -> TResult (substitute_type type_map ty)
-  | other -> other
-
-and substitute_expr type_map = function
-  | Array (n, ty, elems) ->
-      Array
-        ( n,
-          substitute_type type_map ty,
-          List.map (substitute_expr type_map) elems )
-  | Struct (name, targs, fields) ->
-      let new_targs = List.map (substitute_type type_map) targs in
-      let new_fields =
-        List.map (fun (n, e) -> (n, substitute_expr type_map e)) fields
-      in
-      Struct (name, new_targs, new_fields)
-  | Add (l, r) -> Add (substitute_expr type_map l, substitute_expr type_map r)
-  | Sub (l, r) -> Sub (substitute_expr type_map l, substitute_expr type_map r)
-  | Mul (l, r) -> Mul (substitute_expr type_map l, substitute_expr type_map r)
-  | Div (l, r) -> Div (substitute_expr type_map l, substitute_expr type_map r)
-  | Mod (l, r) -> Mod (substitute_expr type_map l, substitute_expr type_map r)
-  | Eq (l, r) -> Eq (substitute_expr type_map l, substitute_expr type_map r)
-  | Lt (l, r) -> Lt (substitute_expr type_map l, substitute_expr type_map r)
-  | Lte (l, r) -> Lte (substitute_expr type_map l, substitute_expr type_map r)
-  | Gt (l, r) -> Gt (substitute_expr type_map l, substitute_expr type_map r)
-  | Gte (l, r) -> Gte (substitute_expr type_map l, substitute_expr type_map r)
-  | And (l, r) -> And (substitute_expr type_map l, substitute_expr type_map r)
-  | Or (l, r) -> Or (substitute_expr type_map l, substitute_expr type_map r)
-  | Neg e -> Neg (substitute_expr type_map e)
-  | Ref e -> Ref (substitute_expr type_map e)
-  | Deref e -> Deref (substitute_expr type_map e)
-  | Call (name, args) -> Call (name, List.map (substitute_expr type_map) args)
-  | ArrayAccess (name, idx) -> ArrayAccess (name, substitute_expr type_map idx)
-  | If (cond, then_b, elifs, else_b) ->
-      let s_cond = substitute_expr type_map cond in
-      let s_then = List.map (substitute_stmt type_map) then_b in
-      let s_elifs =
-        List.map
-          (fun (c, b) ->
-            (substitute_expr type_map c, List.map (substitute_stmt type_map) b))
-          elifs
-      in
-      let s_else =
-        match else_b with
-        | None -> None
-        | Some b -> Some (List.map (substitute_stmt type_map) b)
-      in
-      If (s_cond, s_then, s_elifs, s_else)
-  | Catch (e, id, ty, stmts) ->
-      Catch
-        ( substitute_expr type_map e,
-          id,
-          substitute_type type_map ty,
-          List.map (substitute_stmt type_map) stmts )
-  | e -> e
-
-and substitute_stmt type_map = function
-  | Expr e -> Expr (substitute_expr type_map e)
-  | DefLet (name, is_mut, ty, e) ->
-      let new_e =
-        match e with
-        | Some ee -> Some (substitute_expr type_map ee)
-        | None -> None
-      in
-      DefLet (name, is_mut, substitute_type type_map ty, new_e)
-  | Assign (name, e) -> Assign (name, substitute_expr type_map e)
-  | ArrayAssign (name, idx, e) ->
-      ArrayAssign
-        (name, substitute_expr type_map idx, substitute_expr type_map e)
-  | DerefAssign (ptr, e) ->
-      DerefAssign (substitute_expr type_map ptr, substitute_expr type_map e)
-  | Return e -> Return (substitute_expr type_map e)
-  | Block stmts -> Block (List.map (substitute_stmt type_map) stmts)
-  | For stmts -> For (List.map (substitute_stmt type_map) stmts)
-  | DefFN (name, params, ret_ty, body) ->
-      let s_params =
-        List.map
-          (fun p ->
-            { param_name = p.param_name; ty = substitute_type type_map p.ty })
-          params
-      in
-      DefFN
-        ( name,
-          s_params,
-          substitute_type type_map ret_ty,
-          List.map (substitute_stmt type_map) body )
-  | Raise e -> Raise (substitute_expr type_map e)
-  | s -> s
 
 let rec llvm_type_of = function
   | TInt -> i64_type ce_ctx
@@ -316,84 +197,38 @@ and codegen_expr = function
       build_load (llvm_type_of inner_ty) actual_ptr "dereftmp" ce_builder
   | Deref _ -> raise (Error "Complex pointer math not yet supported")
   | Add (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      let ty_l = classify_type (type_of lv) in
-      let ty_r = classify_type (type_of rv) in
-
-      if ty_l = TypeKind.Pointer && ty_r = TypeKind.Integer then
-        build_in_bounds_gep
-          (element_type (type_of lv))
-          lv [| rv |] "ptraddtmp" ce_builder
-      else if ty_l = TypeKind.Integer && ty_r = TypeKind.Pointer then
-        build_in_bounds_gep
-          (element_type (type_of rv))
-          rv [| lv |] "ptraddtmp" ce_builder
-      else if type_of lv = double_type ce_ctx then
-        build_fadd lv rv "faddtmp" ce_builder
-      else build_add lv rv "addtmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv build_add build_fadd "subtmp"
   | Sub (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      let ty_l = classify_type (type_of lv) in
-      let ty_r = classify_type (type_of rv) in
-
-      if ty_l = TypeKind.Pointer && ty_r = TypeKind.Integer then
-        let neg_rv = build_neg rv "negidx" ce_builder in
-        build_in_bounds_gep
-          (element_type (type_of lv))
-          lv [| neg_rv |] "ptrsubtmp" ce_builder
-      else if type_of lv = double_type ce_ctx then
-        build_fsub lv rv "fsubtmp" ce_builder
-      else build_sub lv rv "subtmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv build_sub build_fsub "subtmp"
   | Mul (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fmul lv rv "fmultmp" ce_builder
-      else build_mul lv rv "multmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv build_mul build_fmul "multmp"
   | Div (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fdiv lv rv "fdivtmp" ce_builder
-      else build_sdiv lv rv "divtmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv build_sdiv build_fdiv "divtmp"
   | Mod (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_frem lv rv "fmodtmp" ce_builder
-      else build_srem lv rv "modtmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv build_srem build_frem "modtmp"
   | Eq (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fcmp Fcmp.Oeq lv rv "feqtmp" ce_builder
-      else build_icmp Icmp.Eq lv rv "eqtmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv (build_icmp Icmp.Eq) (build_fcmp Fcmp.Oeq) "eqtmp"
   | Lt (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fcmp Fcmp.Olt lv rv "flttmp" ce_builder
-      else build_icmp Icmp.Slt lv rv "lttmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv (build_icmp Icmp.Slt) (build_fcmp Fcmp.Olt) "lttmp"
   | Lte (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fcmp Fcmp.Ole lv rv "fltetmp" ce_builder
-      else build_icmp Icmp.Sle lv rv "ltetmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv (build_icmp Icmp.Sle) (build_fcmp Fcmp.Ole)
+        "ltetmp"
   | Gt (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fcmp Fcmp.Ogt lv rv "fgttmp" ce_builder
-      else build_icmp Icmp.Sgt lv rv "gttmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv (build_icmp Icmp.Sgt) (build_fcmp Fcmp.Ogt)
+        "ltetmp"
   | Gte (l, r) ->
-      let lv = codegen_expr l in
-      let rv = codegen_expr r in
-      if type_of lv = double_type ce_ctx then
-        build_fcmp Fcmp.Oge lv rv "fgtetmp" ce_builder
-      else build_icmp Icmp.Sge lv rv "gtetmp" ce_builder
+      let lv, rv = (codegen_expr l, codegen_expr r) in
+      build_numeric_op lv rv (build_icmp Icmp.Sge) (build_fcmp Fcmp.Oge)
+        "ltetmp"
   | And (l, r) ->
       build_and (codegen_expr l) (codegen_expr r) "andtmp" ce_builder
   | Or (l, r) -> build_or (codegen_expr l) (codegen_expr r) "ortmp" ce_builder
@@ -678,82 +513,16 @@ and codegen_stmt = function
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
       let var_ptr =
-        if String.contains name '.' then
+        if String.contains name '.' then (
           let parts = String.split_on_char '.' name in
           let base_name = List.hd parts in
-          let props = List.tl parts in
-
-          match Hashtbl.find_opt named_values base_name with
-          | Some (v, ast_ty, ismut) ->
-              if not ismut then
-                raise
-                  (Error
-                     ("Cannot assign to property of immutable variable '"
-                    ^ base_name ^ "'"));
-
-              let rec get_gep current_ptr current_ty props =
-                match props with
-                | [] -> current_ptr
-                | prop :: rest -> (
-                    match classify_type current_ty with
-                    | TypeKind.Struct -> (
-                        let struct_name_opt = struct_name current_ty in
-                        match struct_name_opt with
-                        | Some s_name -> (
-                            let clean_name =
-                              if String.starts_with ~prefix:"struct." s_name
-                              then String.sub s_name 7 (String.length s_name - 7)
-                              else s_name
-                            in
-                            match
-                              Hashtbl.find_opt struct_registry clean_name
-                            with
-                            | Some (_, field_map) -> (
-                                try
-                                  let idx = List.assoc prop field_map in
-                                  let next_ptr =
-                                    build_struct_gep current_ty current_ptr idx
-                                      "prop_ptr" ce_builder
-                                  in
-                                  let struct_elem_types =
-                                    struct_element_types current_ty
-                                  in
-                                  let next_ty = struct_elem_types.(idx) in
-                                  get_gep next_ptr next_ty rest
-                                with Not_found ->
-                                  raise
-                                    (Error
-                                       ("Unknown property '" ^ prop
-                                      ^ "' on struct '" ^ clean_name ^ "'")))
-                            | None ->
-                                raise
-                                  (Error
-                                     ("Could not find struct definition for '"
-                                    ^ clean_name ^ "'")))
-                        | None ->
-                            raise
-                              (Error
-                                 "Cannot access property on an anonymous struct")
-                        )
-                    | _ ->
-                        raise
-                          (Error
-                             ("Cannot access property '" ^ prop
-                            ^ "' on non-struct type")))
-              in
-              get_gep v (llvm_type_of ast_ty) props
-          | None ->
-              raise
-                (Error ("Variable not defined for assignment: " ^ base_name))
+          let v, ast_ty, ismut = Hashtbl.find named_values base_name in
+          if not ismut then raise (Error "Cannot assign to immutable property");
+          resolve_property_ptr v (llvm_type_of ast_ty) (List.tl parts))
         else
-          match Hashtbl.find_opt named_values name with
-          | Some (v, _, ismut) ->
-              if not ismut then
-                raise
-                  (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
-              v
-          | None ->
-              raise (Error ("Variable not defined for assignment: " ^ name))
+          let v, _, ismut = Hashtbl.find named_values name in
+          if not ismut then raise (Error "Cannot assign to immutable variable");
+          v
       in
       ignore (build_store val_ var_ptr ce_builder);
       val_
@@ -962,20 +731,13 @@ and codegen_stmt = function
 let optimize the_module =
   ignore (Llvm_all_backends.initialize ());
   let target_triple = Llvm_target.Target.default_triple () in
-  let target = Llvm_target.Target.by_triple target_triple in
   let target_machine =
-    Llvm_target.TargetMachine.create ~triple:target_triple target
+    Llvm_target.TargetMachine.create ~triple:target_triple
+      (Llvm_target.Target.by_triple target_triple)
   in
-
   let pbo = Llvm_passbuilder.create_passbuilder_options () in
-
-  begin match
-    Llvm_passbuilder.run_passes the_module "default<O3>" target_machine pbo
-  with
-  | Ok () -> ()
-  | Error msg -> Printf.eprintf "Optimization error: %s\n" msg
-  end;
-
+  ignore
+    (Llvm_passbuilder.run_passes the_module "default<O3>" target_machine pbo);
   Llvm_passbuilder.dispose_passbuilder_options pbo;
   the_module
 
