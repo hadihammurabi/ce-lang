@@ -11,85 +11,150 @@ let get_printf context the_module =
       in
       declare_function "printf" printf_ty the_module
 
+      let get_print_any context the_module builder =
+  match lookup_function "__print_any" the_module with
+  | Some f -> f
+  | None ->
+      let ptr_ty = pointer_type context in
+      let any_ty = struct_type context [| ptr_ty; ptr_ty |] in
+      let ft = function_type (void_type context) [| any_ty |] in
+      let f = declare_function "__print_any" ft the_module in
+
+      let saved_bb = insertion_block builder in
+      let bb = append_block context "entry" f in
+      position_at_end bb builder;
+
+      let any_val = param f 0 in
+      let data_ptr = build_extractvalue any_val 0 "data" builder in
+      let tag_ptr = build_extractvalue any_val 1 "tag_ptr" builder in
+      let tag_val = build_ptrtoint tag_ptr (i64_type context) "tag" builder in
+
+      let printf_func = get_printf context the_module in
+      let print_fmt fmt_str args =
+        let fmt_val = build_global_stringptr fmt_str "fmt" builder in
+        let printf_ty = var_arg_function_type (i32_type context) [| ptr_ty |] in
+        ignore (build_call printf_ty printf_func (Array.of_list (fmt_val :: args)) "p" builder)
+      in
+
+      let bb_int = append_block context "t_int" f in
+      let bb_float = append_block context "t_float" f in
+      let bb_bool = append_block context "t_bool" f in
+      let bb_str = append_block context "t_str" f in
+      let bb_char = append_block context "t_char" f in
+      let bb_end = append_block context "t_end" f in
+
+      let sw = build_switch tag_val bb_end 5 builder in
+      add_case sw (const_int (i64_type context) 1) bb_int;
+      add_case sw (const_int (i64_type context) 2) bb_float;
+      add_case sw (const_int (i64_type context) 3) bb_bool;
+      add_case sw (const_int (i64_type context) 4) bb_str;
+      add_case sw (const_int (i64_type context) 5) bb_char;
+
+      position_at_end bb_int builder;
+      let int_val = build_load (i64_type context) data_ptr "int_val" builder in
+      print_fmt "%ld" [int_val];
+      ignore (build_br bb_end builder);
+
+      position_at_end bb_float builder;
+      let flt_val = build_load (double_type context) data_ptr "flt_val" builder in
+      print_fmt "%g" [flt_val];
+      ignore (build_br bb_end builder);
+
+      position_at_end bb_bool builder;
+      let bool_val = build_load (i1_type context) data_ptr "bool_val" builder in
+      let true_str = build_global_stringptr "true" "t" builder in
+      let false_str = build_global_stringptr "false" "f" builder in
+      let str_val = build_select bool_val true_str false_str "s" builder in
+      print_fmt "%s" [str_val];
+      ignore (build_br bb_end builder);
+
+      position_at_end bb_str builder;
+      let str_val2 = build_load ptr_ty data_ptr "str_val" builder in
+      print_fmt "%s" [str_val2];
+      ignore (build_br bb_end builder);
+      
+      position_at_end bb_char builder;
+      let char_val = build_load (i8_type context) data_ptr "char_val" builder in
+      print_fmt "%c" [char_val];
+      ignore (build_br bb_end builder);
+
+      position_at_end bb_end builder;
+      ignore (build_ret_void builder);
+
+      position_at_end saved_bb builder;
+      f
+
 let get name =
   match name with
   | "println" | "print" | "printf" ->
       Some
         (fun context the_module builder fn_name arg_vals ->
-          let rec process_arg v =
+          let printf_func = get_printf context the_module in
+          let printf_ty = var_arg_function_type (i32_type context) [| pointer_type context |] in
+
+          let print_str s =
+            let fmt = build_global_stringptr s "fmt" builder in
+            ignore (build_call printf_ty printf_func [| fmt |] "p" builder)
+          in
+
+          let rec print_arg v =
             let ty = type_of v in
             match classify_type ty with
             | TypeKind.Integer ->
-                let bitwidth = integer_bitwidth ty in
-                if bitwidth = 1 then
-                  let true_str =
-                    build_global_stringptr "true" "truestr" builder
-                  in
-                  let false_str =
-                    build_global_stringptr "false" "falsestr" builder
-                  in
-                  let str_val =
-                    build_select v true_str false_str "boolstr" builder
-                  in
-                  ("%s", [ str_val ])
-                else if bitwidth = 8 then ("%c", [ v ])
-                else ("%ld", [ v ])
-            | TypeKind.Double -> ("%g", [ v ])
-            | TypeKind.Pointer -> ("%s", [ v ])
-            | TypeKind.Array ->
-                let len = array_length ty in
-                let fmt_acc = ref [] in
-                let val_acc = ref [] in
-
-                for i = 0 to len - 1 do
-                  let elem = build_extractvalue v i "exttmp" builder in
-                  let e_fmt, e_vals = process_arg elem in
-                  fmt_acc := e_fmt :: !fmt_acc;
-                  val_acc := !val_acc @ e_vals
-                done;
-
-                let fmt_str =
-                  "[" ^ String.concat ", " (List.rev !fmt_acc) ^ "]"
-                in
-                (fmt_str, !val_acc)
+                let bw = integer_bitwidth ty in
+                if bw = 1 then begin
+                  let t = build_global_stringptr "true" "t" builder in
+                  let f = build_global_stringptr "false" "f" builder in
+                  let s = build_select v t f "s" builder in
+                  let fmt = build_global_stringptr "%s" "fmt" builder in
+                  ignore (build_call printf_ty printf_func [| fmt; s |] "p" builder)
+                end else if bw = 8 then begin
+                  let fmt = build_global_stringptr "%c" "fmt" builder in
+                  ignore (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                end else begin
+                  let fmt = build_global_stringptr "%ld" "fmt" builder in
+                  ignore (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                end
+            | TypeKind.Double ->
+                let fmt = build_global_stringptr "%g" "fmt" builder in
+                ignore (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+            | TypeKind.Pointer ->
+                let fmt = build_global_stringptr "%s" "fmt" builder in
+                ignore (build_call printf_ty printf_func [| fmt; v |] "p" builder)
             | TypeKind.Struct ->
-                let elem_types = struct_element_types ty in
-                let len = Array.length elem_types in
-                let fmt_acc = ref [] in
-                let val_acc = ref [] in
-
+                let elems = struct_element_types ty in
+                if Array.length elems = 2 && elems.(0) = pointer_type context && elems.(1) = pointer_type context then begin
+                   let print_any_f = get_print_any context the_module builder in
+                   ignore (build_call (function_type (void_type context) [| ty |]) print_any_f [| v |] "p" builder)
+                end else begin
+                  print_str "{";
+                  let len = Array.length elems in
+                  for i = 0 to len - 1 do
+                    let elem = build_extractvalue v i "ext" builder in
+                    print_arg elem;
+                    if i < len - 1 then print_str ", "
+                  done;
+                  print_str "}"
+                end
+            | TypeKind.Array ->
+                print_str "[";
+                let len = array_length ty in
                 for i = 0 to len - 1 do
-                  let elem = build_extractvalue v i "exttmp" builder in
-                  let e_fmt, e_vals = process_arg elem in
-                  fmt_acc := e_fmt :: !fmt_acc;
-                  val_acc := !val_acc @ e_vals
+                  let elem = build_extractvalue v i "ext" builder in
+                  print_arg elem;
+                  if i < len - 1 then print_str ", "
                 done;
-                let fmt_str =
-                  "{" ^ String.concat ", " (List.rev !fmt_acc) ^ "}"
-                in
-                (fmt_str, !val_acc)
-            | _ -> ("(complex_type)", [])
+                print_str "]"
+            | _ -> print_str "(complex_type)"
           in
 
-          let fmts, vals =
-            List.fold_left
-              (fun (f_acc, v_acc) v ->
-                let f, vs = process_arg v in
-                (f :: f_acc, v_acc @ vs))
-              ([], []) arg_vals
-          in
+          let len = List.length arg_vals in
+          List.iteri (fun i v ->
+            print_arg v;
+            if i < len - 1 then print_str " "
+          ) arg_vals;
 
-          let space_sep = String.concat " " (List.rev fmts) in
-          let final_fmt =
-            if fn_name = "println" then space_sep ^ "\n" else space_sep
-          in
-          let fmt_val = build_global_stringptr final_fmt "fmt" builder in
+          if fn_name = "println" then print_str "\n";
 
-          let printf_func = get_printf context the_module in
-          let printf_ty =
-            var_arg_function_type (i32_type context) [| pointer_type context |]
-          in
-
-          let printf_args = Array.of_list (fmt_val :: vals) in
-          build_call printf_ty printf_func printf_args "printftmp" builder)
+          const_int (i32_type context) 0)
   | _ -> None
