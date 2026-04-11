@@ -237,92 +237,65 @@ and codegen_expr = function
       if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
       else build_neg v "negtmp" ce_builder
   | Call (name, args) -> (
-      if String.contains name '.' then
-        let last_dot_idx = String.rindex name '.' in
-        let base_path = String.sub name 0 last_dot_idx in
-        let method_name =
-          String.sub name (last_dot_idx + 1)
-            (String.length name - last_dot_idx - 1)
-        in
-        if Hashtbl.mem struct_registry base_path then
-          let mangled_name = base_path ^ "::" ^ method_name in
-          let callee =
-            match lookup_function mangled_name ce_module with
-            | Some c -> c
-            | None ->
-                raise
-                  (Error
-                     ("Unknown method '" ^ method_name ^ "' on struct '"
-                    ^ base_path ^ "'"))
-          in
-          let ft =
-            match Hashtbl.find_opt function_types mangled_name with
-            | Some t -> t
-            | None ->
-                raise
-                  (Error ("Unknown function type for method: " ^ mangled_name))
-          in
-          let args_val = Array.of_list (List.map codegen_expr args) in
-          build_call ft callee args_val "staticcalltmp" ce_builder
-        else
-          let self_val = codegen_expr (Let base_path) in
-          let self_ty_llvm = type_of self_val in
-
-          match struct_name self_ty_llvm with
-          | Some s_name ->
-              let clean_name =
-                if String.starts_with ~prefix:"struct." s_name then
-                  String.sub s_name 7 (String.length s_name - 7)
-                else s_name
-              in
-
-              let mangled_name = clean_name ^ "::" ^ method_name in
-              let callee =
-                match lookup_function mangled_name ce_module with
-                | Some c -> c
-                | None ->
-                    raise
-                      (Error
-                         ("Unknown method '" ^ method_name ^ "' on struct '"
-                        ^ clean_name ^ "'"))
-              in
-
-              let ft =
-                match Hashtbl.find_opt function_types mangled_name with
-                | Some t -> t
-                | None ->
-                    raise
-                      (Error
-                         ("Unknown function type for method: " ^ mangled_name))
-              in
-              let compiled_args = List.map codegen_expr args in
-              let all_args = Array.of_list (self_val :: compiled_args) in
-
-              build_call ft callee all_args "methodcalltmp" ce_builder
+      match Builtin.get name with
+      | Some builtin_fn ->
+          let arg_vals = List.map codegen_expr args in
+          builtin_fn ce_ctx ce_module ce_builder name arg_vals
+      | None -> (
+          match lookup_function name ce_module with
+          | Some callee ->
+              let arg_vals = List.map codegen_expr args in
+              let ft = Hashtbl.find function_types name in
+              let args_val = Array.of_list arg_vals in
+              build_call ft callee args_val "calltmp" ce_builder
           | None ->
-              raise
-                (Error
-                   ("Cannot call method '" ^ method_name
-                  ^ "' on a non-struct type"))
-      else
-        let arg_vals = List.map codegen_expr args in
-        match Builtin.get name with
-        | Some builtin_fn ->
-            builtin_fn ce_ctx ce_module ce_builder name arg_vals
-        | None ->
-            let callee =
-              match lookup_function name ce_module with
-              | Some f -> f
-              | None -> raise (Error ("Unknown function: " ^ name))
-            in
-            let ft =
-              match Hashtbl.find_opt function_types name with
-              | Some t -> t
-              | None -> raise (Error ("Unknown function type for: " ^ name))
-            in
-            let args_val = Array.of_list arg_vals in
+              if String.contains name '.' then
+                let last_dot_idx = String.rindex name '.' in
+                let base_path = String.sub name 0 last_dot_idx in
+                let method_name =
+                  String.sub name (last_dot_idx + 1)
+                    (String.length name - last_dot_idx - 1)
+                in
+                
+                if Hashtbl.mem struct_registry base_path then
+                  let mangled_name = base_path ^ "::" ^ method_name in
+                  let callee =
+                    match lookup_function mangled_name ce_module with
+                    | Some c -> c
+                    | None ->
+                        raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ base_path ^ "'"))
+                  in
+                  let ft = Hashtbl.find function_types mangled_name in
+                  let args_val = Array.of_list (List.map codegen_expr args) in
+                  build_call ft callee args_val "staticcalltmp" ce_builder
+                else
+                  let self_val = codegen_expr (Let base_path) in
+                  let self_ty_llvm = type_of self_val in
 
-            build_call ft callee args_val "calltmp" ce_builder)
+                  match struct_name self_ty_llvm with
+                  | Some s_name ->
+                      let clean_name =
+                        if String.starts_with ~prefix:"struct." s_name then
+                          String.sub s_name 7 (String.length s_name - 7)
+                        else s_name
+                      in
+                      let mangled_name = clean_name ^ "::" ^ method_name in
+                      let callee =
+                        match lookup_function mangled_name ce_module with
+                        | Some c -> c
+                        | None ->
+                            raise (Error ("Unknown method '" ^ method_name ^ "' on struct '" ^ clean_name ^ "'"))
+                      in
+                      let ft = Hashtbl.find function_types mangled_name in
+                      let compiled_args = List.map codegen_expr args in
+                      let all_args = Array.of_list (self_val :: compiled_args) in
+                      build_call ft callee all_args "methodcalltmp" ce_builder
+                  | None ->
+                      raise (Error ("Cannot call method '" ^ method_name ^ "' on a non-struct type"))
+              else
+                raise (Error ("Unknown function: " ^ name))
+      )
+  )
   | Array (n, ty, elems) ->
       let elem_ty = llvm_type_of ty in
       let arr_ty = array_type elem_ty n in

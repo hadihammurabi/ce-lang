@@ -183,11 +183,11 @@ expr_simple:
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
-  | name = IDENT LBRACE sep_opt RBRACE                            { Struct (name, [], []) }
-  | name = IDENT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, [], fields) }
-  | name = IDENT LBRACKET ty = types RBRACKET LBRACE sep_opt RBRACE
+  | name = IDENT DOT LBRACE sep_opt RBRACE                            { Struct (name, [], []) }
+  | name = IDENT DOT LBRACE sep_opt fields = struct_init_list RBRACE  { Struct (name, [], fields) }
+  | name = IDENT LBRACKET ty = types RBRACKET DOT LBRACE sep_opt RBRACE
     { Struct (name, [ty], []) }
-  | name = IDENT LBRACKET ty = types RBRACKET LBRACE sep_opt fields = struct_init_list RBRACE
+  | name = IDENT LBRACKET ty = types RBRACKET DOT LBRACE sep_opt fields = struct_init_list RBRACE
     { Struct (name, [ty], fields) }
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
     { Catch(e, id, ty, body) }  /* Add this line */
