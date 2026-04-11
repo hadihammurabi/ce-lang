@@ -166,19 +166,19 @@ let rec process_file_inner visited filepath namespace_prefix =
     imports_ast @ namespaced_ast
   end
 
-let process_file visited filepath = 
+let process_file visited filepath =
   let prelude_ast =
     try
-      let std_path = 
-        if Sys.file_exists "std/std.ce" then "std/std.ce" 
-        else resolve_import ["std"; "std"] 
+      let std_path =
+        if Sys.file_exists "std/std.ce" then "std/std.ce"
+        else resolve_import [ "std"; "std" ]
       in
       process_file_inner visited std_path None
-    with e -> 
+    with e ->
       Printf.eprintf "%s\n" (Printexc.to_string e);
       []
   in
-  
+
   let main_ast = process_file_inner visited filepath None in
   prelude_ast @ main_ast
 

@@ -286,19 +286,27 @@ and codegen_expr = function
       | None -> (
           match lookup_function name ce_module with
           | Some callee ->
-              let arg_vals = List.map codegen_expr args in
               let ft = Hashtbl.find function_types name in
+              let expected_tys = param_types ft in
+              let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
               let args_val = Array.of_list arg_vals in
               build_call ft callee args_val "calltmp" ce_builder
           | None -> (
               match lookup_function target_name ce_module with
               | Some callee ->
-                  let arg_vals = List.map codegen_expr args in
                   let ft = Hashtbl.find function_types target_name in
+                  let expected_tys = param_types ft in
+                  let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
                   let args_val = Array.of_list arg_vals in
                   build_call ft callee args_val "calltmp" ce_builder
               | None ->
-                  if String.contains name '.' then
+                  if Hashtbl.mem fn_templates name then
+                    raise
+                      (Error
+                         ("Function '" ^ name
+                        ^ "' is generic and requires type arguments (e.g., "
+                        ^ name ^ "[int]())"))
+                  else if String.contains name '.' then
                     let last_dot_idx = String.rindex name '.' in
                     let base_path = String.sub name 0 last_dot_idx in
                     let method_name =
@@ -318,12 +326,15 @@ and codegen_expr = function
                                 ^ "' on struct '" ^ base_path ^ "'"))
                       in
                       let ft = Hashtbl.find function_types mangled_name in
-                      let args_val =
-                        Array.of_list (List.map codegen_expr args)
-                      in
+                      let expected_tys = param_types ft in
+                      let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i) (codegen_expr arg)) args in
+                      let args_val = Array.of_list arg_vals in
                       build_call ft callee args_val "staticcalltmp" ce_builder
                     else
-                      let self_val = codegen_expr (Let base_path) in
+                      let self_val = 
+                        try codegen_expr (Let base_path) 
+                        with Error _ -> raise (Error ("Unknown function or method: '" ^ name ^ "'"))
+                      in
                       let self_ty_llvm = type_of self_val in
 
                       match struct_name self_ty_llvm with
@@ -344,10 +355,10 @@ and codegen_expr = function
                                     ^ "' on struct '" ^ clean_name ^ "'"))
                           in
                           let ft = Hashtbl.find function_types mangled_name in
-                          let compiled_args = List.map codegen_expr args in
-                          let all_args =
-                            Array.of_list (self_val :: compiled_args)
-                          in
+                          let expected_tys = param_types ft in
+                          let coerced_self = coerce_value expected_tys.(0) self_val in
+                          let arg_vals = List.mapi (fun i arg -> coerce_value expected_tys.(i + 1) (codegen_expr arg)) args in
+                          let all_args = Array.of_list (coerced_self :: arg_vals) in
                           build_call ft callee all_args "methodcalltmp"
                             ce_builder
                       | None ->
@@ -443,7 +454,10 @@ and codegen_expr = function
         (fun (fname, fexpr) ->
           let fidx = List.assoc fname field_map in
           let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
-          ignore (build_store (codegen_expr fexpr) fptr ce_builder))
+          let expected_ty = (struct_element_types llty).(fidx) in
+          let raw_val = codegen_expr fexpr in
+          let val_to_store = coerce_value expected_ty raw_val in
+          ignore (build_store val_to_store fptr ce_builder))
         fields;
 
       build_load llty alloc "structload" ce_builder
@@ -511,8 +525,8 @@ and coerce_value expected_ll_ty raw_val =
       match classify_type expected_ll_ty with
       | TypeKind.Struct ->
           let elems = struct_element_types expected_ll_ty in
-          Array.length elems = 2 
-          && elems.(0) = pointer_type ce_ctx 
+          Array.length elems = 2
+          && elems.(0) = pointer_type ce_ctx
           && elems.(1) = pointer_type ce_ctx
       | _ -> false
     in
@@ -520,12 +534,14 @@ and coerce_value expected_ll_ty raw_val =
     if is_interface then begin
       let malloc_val = build_malloc raw_ty "autobox_malloc" ce_builder in
       ignore (build_store raw_val malloc_val ce_builder);
-      
+
       let ptr_ty = pointer_type ce_ctx in
-      let data_ptr = build_bitcast malloc_val ptr_ty "autobox_data" ce_builder in
+      let data_ptr =
+        build_bitcast malloc_val ptr_ty "autobox_data" ce_builder
+      in
       let type_tag =
         match classify_type raw_ty with
-        | TypeKind.Integer -> 
+        | TypeKind.Integer ->
             let bw = integer_bitwidth raw_ty in
             if bw = 1 then 3 else if bw = 8 then 5 else 1
         | TypeKind.Double -> 2
@@ -534,10 +550,18 @@ and coerce_value expected_ll_ty raw_val =
       in
       let tag_val = const_int (i64_type ce_ctx) type_tag in
       let vtable_ptr = build_inttoptr tag_val ptr_ty "autobox_tag" ce_builder in
-      
-      let box_0 = build_insertvalue (const_null expected_ll_ty) data_ptr 0 "autobox_d" ce_builder in
+
+      let box_0 =
+        build_insertvalue
+          (const_null expected_ll_ty)
+          data_ptr 0 "autobox_d" ce_builder
+      in
       build_insertvalue box_0 vtable_ptr 1 "autobox_v" ce_builder
-    end else raw_val
+    end
+    else if classify_type expected_ll_ty = TypeKind.Pointer && classify_type raw_ty = TypeKind.Pointer then begin
+      build_bitcast raw_val expected_ll_ty "ptr_cast" ce_builder
+    end
+    else raw_val
 
 and codegen_stmt = function
   | Expr e ->
@@ -584,24 +608,29 @@ and codegen_stmt = function
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
       let var_ptr, expected_ll_ty =
-        if String.contains name '.' then
+        if String.contains name '.' then (
           let parts = String.split_on_char '.' name in
           let base_name = List.hd parts in
           let v, ast_ty, ismut = Hashtbl.find named_values base_name in
           if not ismut then raise (Error "Cannot assign to immutable property");
-          
+
           let rec get_ty ty props =
             match props with
             | [] -> ty
             | prop :: rest ->
                 let s_name = Option.get (struct_name ty) in
-                let clean_name = if String.starts_with ~prefix:"struct." s_name then String.sub s_name 7 (String.length s_name - 7) else s_name in
+                let clean_name =
+                  if String.starts_with ~prefix:"struct." s_name then
+                    String.sub s_name 7 (String.length s_name - 7)
+                  else s_name
+                in
                 let _, field_map = Hashtbl.find struct_registry clean_name in
                 let idx = List.assoc prop field_map in
                 get_ty (struct_element_types ty).(idx) rest
           in
           let ll_ast_ty = llvm_type_of ast_ty in
-          (resolve_property_ptr v ll_ast_ty (List.tl parts), get_ty ll_ast_ty (List.tl parts))
+          ( resolve_property_ptr v ll_ast_ty (List.tl parts),
+            get_ty ll_ast_ty (List.tl parts) ))
         else
           let v, ast_ty, ismut = Hashtbl.find named_values name in
           if not ismut then raise (Error "Cannot assign to immutable variable");
