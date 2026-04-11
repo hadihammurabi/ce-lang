@@ -21,6 +21,10 @@ let impl_templates :
     Hashtbl.t =
   Hashtbl.create 10
 
+let fn_templates :
+    (string, (string * types) list * param list * types * stmt list) Hashtbl.t =
+  Hashtbl.create 10
+
 let struct_registry : (string, lltype * (string * int) list) Hashtbl.t =
   Hashtbl.create 10
 

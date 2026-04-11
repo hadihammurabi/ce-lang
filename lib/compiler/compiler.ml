@@ -100,6 +100,40 @@ let rec llvm_type_of = function
 
           fst (Hashtbl.find struct_registry mangled_name))
 
+and instantiate_generic_fn name targs =
+  let mangled_name =
+    name ^ "_" ^ String.concat "_" (List.map show_types targs)
+  in
+
+  if Hashtbl.mem function_types mangled_name then mangled_name
+  else
+    begin match Hashtbl.find_opt fn_templates name with
+    | Some (tparams, fn_params, ret_ty, body) ->
+        let type_map =
+          List.map2 (fun (p_name, _) arg_ty -> (p_name, arg_ty)) tparams targs
+        in
+        let sub_params =
+          List.map
+            (fun p ->
+              { param_name = p.param_name; ty = substitute_type type_map p.ty })
+            fn_params
+        in
+        let sub_ret_ty = substitute_type type_map ret_ty in
+        let sub_body = List.map (substitute_stmt type_map) body in
+        let saved_bb =
+          try Some (insertion_block ce_builder) with Not_found -> None
+        in
+
+        ignore
+          (codegen_stmt
+             (DefFN (mangled_name, [], sub_params, sub_ret_ty, sub_body)));
+        (match saved_bb with
+        | Some bb -> position_at_end bb ce_builder
+        | None -> ());
+        mangled_name
+    | None -> raise (Error ("Undefined generic function: " ^ name))
+    end
+
 and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
   | Int n -> const_int (i64_type ce_ctx) n
@@ -241,8 +275,11 @@ and codegen_expr = function
       let v = codegen_expr e in
       if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
       else build_neg v "negtmp" ce_builder
-  | Call (name, args) -> (
-      match Builtin.get name with
+  | Call (name, targs, args) -> (
+      let target_name =
+        if targs = [] then name else instantiate_generic_fn name targs
+      in
+      match Builtin.get target_name with
       | Some builtin_fn ->
           let arg_vals = List.map codegen_expr args in
           builtin_fn ce_ctx ce_module ce_builder name arg_vals
@@ -253,41 +290,24 @@ and codegen_expr = function
               let ft = Hashtbl.find function_types name in
               let args_val = Array.of_list arg_vals in
               build_call ft callee args_val "calltmp" ce_builder
-          | None ->
-              if String.contains name '.' then
-                let last_dot_idx = String.rindex name '.' in
-                let base_path = String.sub name 0 last_dot_idx in
-                let method_name =
-                  String.sub name (last_dot_idx + 1)
-                    (String.length name - last_dot_idx - 1)
-                in
+          | None -> (
+              match lookup_function target_name ce_module with
+              | Some callee ->
+                  let arg_vals = List.map codegen_expr args in
+                  let ft = Hashtbl.find function_types target_name in
+                  let args_val = Array.of_list arg_vals in
+                  build_call ft callee args_val "calltmp" ce_builder
+              | None ->
+                  if String.contains name '.' then
+                    let last_dot_idx = String.rindex name '.' in
+                    let base_path = String.sub name 0 last_dot_idx in
+                    let method_name =
+                      String.sub name (last_dot_idx + 1)
+                        (String.length name - last_dot_idx - 1)
+                    in
 
-                if Hashtbl.mem struct_registry base_path then
-                  let mangled_name = base_path ^ "::" ^ method_name in
-                  let callee =
-                    match lookup_function mangled_name ce_module with
-                    | Some c -> c
-                    | None ->
-                        raise
-                          (Error
-                             ("Unknown method '" ^ method_name ^ "' on struct '"
-                            ^ base_path ^ "'"))
-                  in
-                  let ft = Hashtbl.find function_types mangled_name in
-                  let args_val = Array.of_list (List.map codegen_expr args) in
-                  build_call ft callee args_val "staticcalltmp" ce_builder
-                else
-                  let self_val = codegen_expr (Let base_path) in
-                  let self_ty_llvm = type_of self_val in
-
-                  match struct_name self_ty_llvm with
-                  | Some s_name ->
-                      let clean_name =
-                        if String.starts_with ~prefix:"struct." s_name then
-                          String.sub s_name 7 (String.length s_name - 7)
-                        else s_name
-                      in
-                      let mangled_name = clean_name ^ "::" ^ method_name in
+                    if Hashtbl.mem struct_registry base_path then
+                      let mangled_name = base_path ^ "::" ^ method_name in
                       let callee =
                         match lookup_function mangled_name ce_module with
                         | Some c -> c
@@ -295,20 +315,47 @@ and codegen_expr = function
                             raise
                               (Error
                                  ("Unknown method '" ^ method_name
-                                ^ "' on struct '" ^ clean_name ^ "'"))
+                                ^ "' on struct '" ^ base_path ^ "'"))
                       in
                       let ft = Hashtbl.find function_types mangled_name in
-                      let compiled_args = List.map codegen_expr args in
-                      let all_args =
-                        Array.of_list (self_val :: compiled_args)
+                      let args_val =
+                        Array.of_list (List.map codegen_expr args)
                       in
-                      build_call ft callee all_args "methodcalltmp" ce_builder
-                  | None ->
-                      raise
-                        (Error
-                           ("Cannot call method '" ^ method_name
-                          ^ "' on a non-struct type"))
-              else raise (Error ("Unknown function: " ^ name))))
+                      build_call ft callee args_val "staticcalltmp" ce_builder
+                    else
+                      let self_val = codegen_expr (Let base_path) in
+                      let self_ty_llvm = type_of self_val in
+
+                      match struct_name self_ty_llvm with
+                      | Some s_name ->
+                          let clean_name =
+                            if String.starts_with ~prefix:"struct." s_name then
+                              String.sub s_name 7 (String.length s_name - 7)
+                            else s_name
+                          in
+                          let mangled_name = clean_name ^ "::" ^ method_name in
+                          let callee =
+                            match lookup_function mangled_name ce_module with
+                            | Some c -> c
+                            | None ->
+                                raise
+                                  (Error
+                                     ("Unknown method '" ^ method_name
+                                    ^ "' on struct '" ^ clean_name ^ "'"))
+                          in
+                          let ft = Hashtbl.find function_types mangled_name in
+                          let compiled_args = List.map codegen_expr args in
+                          let all_args =
+                            Array.of_list (self_val :: compiled_args)
+                          in
+                          build_call ft callee all_args "methodcalltmp"
+                            ce_builder
+                      | None ->
+                          raise
+                            (Error
+                               ("Cannot call method '" ^ method_name
+                              ^ "' on a non-struct type"))
+                  else raise (Error ("Unknown function: " ^ name)))))
   | Array (n, ty, elems) ->
       let elem_ty = llvm_type_of ty in
       let arr_ty = array_type elem_ty n in
@@ -549,98 +596,104 @@ and codegen_stmt = function
       ignore (build_store val_to_store actual_ptr ce_builder);
       val_to_store
   | DerefAssign _ -> raise (Error "Can only assign to variable pointers")
-  | DefFN (name, params, ret_ty, body) ->
-      let actual_name = if name = "main" then "__ce_main" else name in
+  | DefFN (name, tparams, params, ret_ty, body) ->
+      if List.length tparams > 0 then begin
+        Hashtbl.add fn_templates name (tparams, params, ret_ty, body);
+        const_null (void_type ce_ctx)
+      end
+      else begin
+        let actual_name = if name = "main" then "__ce_main" else name in
 
-      let was_res = !current_fn_is_res in
-      let was_ret_ty = !current_fn_ret_ty in
+        let was_res = !current_fn_is_res in
+        let was_ret_ty = !current_fn_ret_ty in
 
-      (current_fn_is_res := match ret_ty with TResult _ -> true | _ -> false);
-      current_fn_ret_ty := llvm_type_of ret_ty;
+        (current_fn_is_res := match ret_ty with TResult _ -> true | _ -> false);
+        current_fn_ret_ty := llvm_type_of ret_ty;
 
-      let param_types =
-        Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
-      in
-      let ft = function_type (llvm_type_of ret_ty) param_types in
-      Hashtbl.add function_types actual_name ft;
+        let param_types =
+          Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
+        in
+        let ft = function_type (llvm_type_of ret_ty) param_types in
+        Hashtbl.add function_types actual_name ft;
 
-      let f = declare_function actual_name ft ce_module in
-      let bb = append_block ce_ctx "entry" f in
-      position_at_end bb ce_builder;
+        let f = declare_function actual_name ft ce_module in
+        let bb = append_block ce_ctx "entry" f in
+        position_at_end bb ce_builder;
 
-      let old_named_values = Hashtbl.copy named_values in
-      Array.iteri
-        (fun i a ->
-          let n = (List.nth params i).param_name in
-          let p_ty = (List.nth params i).ty in
-          let llvm_p_ty = llvm_type_of p_ty in
-          let alloca = build_alloca llvm_p_ty n ce_builder in
-          ignore (build_store a alloca ce_builder);
-          Hashtbl.add named_values n (alloca, p_ty, false))
-        (Llvm.params f);
+        let old_named_values = Hashtbl.copy named_values in
+        Array.iteri
+          (fun i a ->
+            let n = (List.nth params i).param_name in
+            let p_ty = (List.nth params i).ty in
+            let llvm_p_ty = llvm_type_of p_ty in
+            let alloca = build_alloca llvm_p_ty n ce_builder in
+            ignore (build_store a alloca ce_builder);
+            Hashtbl.add named_values n (alloca, p_ty, false))
+          (Llvm.params f);
 
-      List.iter (fun s -> ignore (codegen_stmt s)) body;
+        List.iter (fun s -> ignore (codegen_stmt s)) body;
 
-      let current_bb = insertion_block ce_builder in
-      (match block_terminator current_bb with
-      | Some _ -> ()
-      | None ->
-          if ret_ty = TVoid then ignore (build_ret_void ce_builder)
-          else if !current_fn_is_res then begin
-            let r_ty = !current_fn_ret_ty in
-            let s1 =
-              build_insertvalue (const_null r_ty)
-                (const_int (i1_type ce_ctx) 0)
-                0 "res_ok" ce_builder
+        let current_bb = insertion_block ce_builder in
+        (match block_terminator current_bb with
+        | Some _ -> ()
+        | None ->
+            if ret_ty = TVoid then ignore (build_ret_void ce_builder)
+            else if !current_fn_is_res then begin
+              let r_ty = !current_fn_ret_ty in
+              let s1 =
+                build_insertvalue (const_null r_ty)
+                  (const_int (i1_type ce_ctx) 0)
+                  0 "res_ok" ce_builder
+              in
+              ignore (build_ret s1 ce_builder)
+            end
+            else
+              raise
+                (Error ("Function '" ^ name ^ "' is missing a return statement")));
+
+        Hashtbl.clear named_values;
+        Hashtbl.iter (fun k v -> Hashtbl.add named_values k v) old_named_values;
+
+        current_fn_is_res := was_res;
+        current_fn_ret_ty := was_ret_ty;
+
+        if name = "main" then begin
+          let c_main_ty = function_type (i32_type ce_ctx) [||] in
+          let c_main_f = declare_function "main" c_main_ty ce_module in
+          let c_bb = append_block ce_ctx "entry" c_main_f in
+          let c_builder = builder_at_end ce_ctx c_bb in
+
+          let call_res = build_call ft f [||] "main_call" c_builder in
+
+          if match ret_ty with TResult _ -> true | _ -> false then begin
+            let is_err = build_extractvalue call_res 0 "is_err" c_builder in
+            let err_bb = append_block ce_ctx "err" c_main_f in
+            let ok_bb = append_block ce_ctx "ok" c_main_f in
+
+            ignore (build_cond_br is_err err_bb ok_bb c_builder);
+
+            position_at_end err_bb c_builder;
+            let err_msg = build_extractvalue call_res 2 "err_msg" c_builder in
+            let printf_f = Builtin.get_printf ce_ctx ce_module in
+            let fmt_str =
+              build_global_stringptr "Uncaught Error: %s\n" "err_fmt" c_builder
             in
-            ignore (build_ret s1 ce_builder)
+            ignore
+              (build_call
+                 (var_arg_function_type (i32_type ce_ctx)
+                    [| pointer_type ce_ctx |])
+                 printf_f [| fmt_str; err_msg |] "printf_call" c_builder);
+            ignore (build_ret (const_int (i32_type ce_ctx) 1) c_builder);
+
+            position_at_end ok_bb c_builder;
+            ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
           end
-          else
-            raise
-              (Error ("Function '" ^ name ^ "' is missing a return statement")));
-
-      Hashtbl.clear named_values;
-      Hashtbl.iter (fun k v -> Hashtbl.add named_values k v) old_named_values;
-
-      current_fn_is_res := was_res;
-      current_fn_ret_ty := was_ret_ty;
-
-      if name = "main" then begin
-        let c_main_ty = function_type (i32_type ce_ctx) [||] in
-        let c_main_f = declare_function "main" c_main_ty ce_module in
-        let c_bb = append_block ce_ctx "entry" c_main_f in
-        let c_builder = builder_at_end ce_ctx c_bb in
-
-        let call_res = build_call ft f [||] "main_call" c_builder in
-
-        if match ret_ty with TResult _ -> true | _ -> false then begin
-          let is_err = build_extractvalue call_res 0 "is_err" c_builder in
-          let err_bb = append_block ce_ctx "err" c_main_f in
-          let ok_bb = append_block ce_ctx "ok" c_main_f in
-
-          ignore (build_cond_br is_err err_bb ok_bb c_builder);
-
-          position_at_end err_bb c_builder;
-          let err_msg = build_extractvalue call_res 2 "err_msg" c_builder in
-          let printf_f = Builtin.get_printf ce_ctx ce_module in
-          let fmt_str =
-            build_global_stringptr "Uncaught Error: %s\n" "err_fmt" c_builder
-          in
-          ignore
-            (build_call
-               (var_arg_function_type (i32_type ce_ctx)
-                  [| pointer_type ce_ctx |])
-               printf_f [| fmt_str; err_msg |] "printf_call" c_builder);
-          ignore (build_ret (const_int (i32_type ce_ctx) 1) c_builder);
-
-          position_at_end ok_bb c_builder;
-          ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
-        end
-        else begin
-          ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
-        end
-      end;
-      f
+          else begin
+            ignore (build_ret (const_int (i32_type ce_ctx) 0) c_builder)
+          end
+        end;
+        f
+      end
   | Block stmts ->
       List.iter (fun s -> ignore (codegen_stmt s)) stmts;
       const_null (void_type ce_ctx)
@@ -698,7 +751,8 @@ and codegen_stmt = function
             let self_param = { param_name = self_id; ty = TNamed name } in
             let all_params = self_param :: m_params in
             ignore
-              (codegen_stmt (DefFN (mangled_name, all_params, ret_ty, body))))
+              (codegen_stmt
+                 (DefFN (mangled_name, [], all_params, ret_ty, body))))
           methods;
         const_null (void_type ce_ctx)
       end

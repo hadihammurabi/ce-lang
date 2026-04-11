@@ -39,7 +39,11 @@ and substitute_expr type_map = function
   | Neg e -> Neg (substitute_expr type_map e)
   | Ref e -> Ref (substitute_expr type_map e)
   | Deref e -> Deref (substitute_expr type_map e)
-  | Call (name, args) -> Call (name, List.map (substitute_expr type_map) args)
+  | Call (name, targs, args) ->
+      Call
+        ( name,
+          List.map (substitute_type type_map) targs,
+          List.map (substitute_expr type_map) args )
   | ArrayAccess (name, idx) -> ArrayAccess (name, substitute_expr type_map idx)
   | If (cond, then_b, elifs, else_b) ->
       let s_cond = substitute_expr type_map cond in
@@ -82,7 +86,7 @@ and substitute_stmt type_map = function
   | Return e -> Return (substitute_expr type_map e)
   | Block stmts -> Block (List.map (substitute_stmt type_map) stmts)
   | For stmts -> For (List.map (substitute_stmt type_map) stmts)
-  | DefFN (name, params, ret_ty, body) ->
+  | DefFN (name, tparams, params, ret_ty, body) ->
       let s_params =
         List.map
           (fun p ->
@@ -91,6 +95,7 @@ and substitute_stmt type_map = function
       in
       DefFN
         ( name,
+          tparams,
           s_params,
           substitute_type type_map ret_ty,
           List.map (substitute_stmt type_map) body )

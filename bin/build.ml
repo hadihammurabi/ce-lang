@@ -70,11 +70,11 @@ let rec namespace_expr prefix decls = function
   | Neg e -> Neg (namespace_expr prefix decls e)
   | Ref e -> Ref (namespace_expr prefix decls e)
   | Deref e -> Deref (namespace_expr prefix decls e)
-  | Call (name, args) ->
+  | Call (name, targs, args) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
       in
-      Call (new_name, List.map (namespace_expr prefix decls) args)
+      Call (new_name, targs, List.map (namespace_expr prefix decls) args)
   | Array (n, ty, elems) ->
       Array (n, ty, List.map (namespace_expr prefix decls) elems)
   | If (cond, then_b, elifs, else_b) ->
@@ -97,11 +97,16 @@ let rec namespace_expr prefix decls = function
 
 and namespace_stmt prefix decls = function
   | Expr e -> Expr (namespace_expr prefix decls e)
-  | DefFN (name, params, ty, body) ->
+  | DefFN (name, tparams, params, ty, body) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
       in
-      DefFN (new_name, params, ty, List.map (namespace_stmt prefix decls) body)
+      DefFN
+        ( new_name,
+          tparams,
+          params,
+          ty,
+          List.map (namespace_stmt prefix decls) body )
   | DefLet (name, is_mut, ty, e) ->
       let new_e =
         match e with
@@ -136,7 +141,7 @@ let rec process_file_inner visited filepath namespace_prefix =
     let decls =
       List.fold_left
         (fun acc stmt ->
-          match stmt with DefFN (name, _, _, _) -> name :: acc | _ -> acc)
+          match stmt with DefFN (name, _, _, _, _) -> name :: acc | _ -> acc)
         [] ast
     in
 

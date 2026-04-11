@@ -55,7 +55,7 @@ type expr =
   | And of expr * expr
   | Or of expr * expr
   | Neg of expr
-  | Call of string * expr list
+  | Call of string * types list * expr list
   | Let of string
   | Array of int * types * expr list
   | ArrayAccess of string * expr
@@ -70,7 +70,7 @@ and fn_signature = { fn_name : string; params : param list; ret_ty : types }
 
 and stmt =
   | Expr of expr
-  | DefFN of string * param list * types * stmt list
+  | DefFN of string * (string * types) list * param list * types * stmt list
   | DefLet of string * bool * types * expr option
   | DefType of string * types
   | DefStruct of string * (string * types) list * struct_field list

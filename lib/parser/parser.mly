@@ -44,7 +44,7 @@ global_stmt:
   | def_let         { $1 }
   | def_type        { $1 }
   | def_struct      { $1 }
-  | def_interface   { $1 }  /* <-- ADD THIS LINE */
+  | def_interface   { $1 }
   | IMPORT path = module_path { Import path }
   | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
@@ -54,7 +54,7 @@ stmt:
   | def_let         { $1 }
   | def_type        { $1 }
   | def_struct      { $1 }
-  | def_interface   { $1 }  /* <-- ADD THIS LINE */
+  | def_interface   { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
   | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
   | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
@@ -65,7 +65,7 @@ stmt:
   | FOR body = block { For body }
   | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
-  | RAISE e = expr  { Raise e }  /* ADDED: raise expr */
+  | RAISE e = expr  { Raise e }
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -107,7 +107,7 @@ types:
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
   | STAR ty = types                       { TPointer ty }
   | name = IDENT LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
-  | BANG ty = types                       { TResult ty }  /* ADDED: !T */
+  | BANG ty = types                       { TResult ty }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -118,8 +118,8 @@ param:
   | name = IDENT ty = types { { param_name = name; ty = ty } }
 
 def_fn:
-  | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
-    { DefFN (name, params, ty, body) }
+  | FN name = IDENT tparams = generic_params_opt LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block
+    { DefFN (name, tparams, params, ty, body) }
 
 def_type:
   | TYPE name = IDENT ty = types { DefType (name, ty) }
@@ -162,6 +162,10 @@ generic_params_opt:
   | { [] }
   | LBRACKET name = IDENT ty = types RBRACKET { [(name, ty)] }
 
+generic_args_opt:
+  | { [] }
+  | LBRACKET args = separated_list(COMMA, types) RBRACKET { args }
+
 impl_method_list:
   |  { [] }
   | m = impl_method sep_opt rest = impl_method_list { m :: rest }
@@ -200,7 +204,6 @@ expr_simple:
   | c = CHAR                                                      { Char c }
   | name = IDENT LBRACKET idx = expr RBRACKET                     { ArrayAccess (name, idx) }
   | id = path                                                     { Let id }
-  | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, args) }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
@@ -211,7 +214,8 @@ expr_simple:
   | name = IDENT LBRACKET ty = types RBRACKET DOT LBRACE sep_opt fields = struct_init_list RBRACE
     { Struct (name, [ty], fields) }
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
-    { Catch(e, id, ty, body) }  /* Add this line */
+    { Catch(e, id, ty, body) }
+  | id = path targs = generic_args_opt LPAREN args = separated_list(COMMA, expr) RPAREN { Call(id, targs, args) }
 
 expr:
   | e = expr_simple               { e }
