@@ -77,7 +77,7 @@ and stmt =
   | Impl of
       string
       * (string * types) list
-      * (string * string * param list * types * stmt list) list
+      * (string * string * bool * param list * types * stmt list) list
   | ArrayAssign of string * expr * expr
   | DerefAssign of expr * expr
   | Return of expr

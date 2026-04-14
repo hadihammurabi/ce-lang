@@ -115,7 +115,7 @@ fn add(a int, b int) int {
 import slice
 
 fn main() !void {
-  let mut x slice.Slice[int] = slice.Slice[int]{ptr = alloc[int](3); len = 0; cap = 3}
+  let mut x slice.Slice[int] = slice.Slice[int]{ptr = malloc[int](3); len = 0; cap = 3}
   
   x = x.append(1)
   x = x.append(3)

@@ -62,7 +62,6 @@ let rec llvm_type_of = function
                   field_name = f.field_name;
                   ty = substitute_type type_map f.ty;
                   is_mut = f.is_mut;
-                  (* ADD THIS LINE *)
                 })
               fields
           in
@@ -74,7 +73,7 @@ let rec llvm_type_of = function
           | Some (_, methods) ->
               let specialized_methods =
                 List.map
-                  (fun (m_name, self_id, m_params, ret_ty, body) ->
+                  (fun (m_name, self_id, is_ptr, m_params, ret_ty, body) ->
                     let sub_params =
                       List.map
                         (fun p ->
@@ -87,6 +86,7 @@ let rec llvm_type_of = function
                     let sub_body = List.map (substitute_stmt type_map) body in
                     ( m_name,
                       self_id,
+                      is_ptr,
                       sub_params,
                       substitute_type type_map ret_ty,
                       sub_body ))
@@ -168,9 +168,21 @@ and codegen_expr = function
 
         match Hashtbl.find_opt named_values base_name with
         | Some (v, ast_ty, _) ->
-            let base_val =
+            let is_ptr, base_struct_ast_ty =
+              match ast_ty with TPointer t -> (true, t) | t -> (false, t)
+            in
+            let base_val_loaded =
               build_load (llvm_type_of ast_ty) v base_name ce_builder
             in
+
+            let base_struct_val, base_struct_llty =
+              if is_ptr then
+                let ll_struct_ty = llvm_type_of base_struct_ast_ty in
+                ( build_load ll_struct_ty base_val_loaded "auto_deref" ce_builder,
+                  ll_struct_ty )
+              else (base_val_loaded, llvm_type_of base_struct_ast_ty)
+            in
+
             let rec extract current_val current_ty props =
               match props with
               | [] -> current_val
@@ -197,7 +209,10 @@ and codegen_expr = function
                                   build_extractvalue current_val idx "proptmp"
                                     ce_builder
                                 in
-                                extract next_val (type_of next_val) rest
+                                let next_ty =
+                                  (struct_element_types current_ty).(idx)
+                                in
+                                extract next_val next_ty rest
                               with Not_found ->
                                 raise
                                   (Error
@@ -218,7 +233,7 @@ and codegen_expr = function
                            ("Cannot access property '" ^ prop
                           ^ "' on non-struct type")))
             in
-            extract base_val (type_of base_val) props
+            extract base_struct_val base_struct_llty props
         | None -> raise (Error ("Unknown variable: " ^ base_name))
       else
         match Hashtbl.find_opt named_values name with
@@ -230,6 +245,11 @@ and codegen_expr = function
       ptr_val
   | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
   | Deref (Let name) ->
+      if String.contains name '.' then
+        raise
+          (Error
+             ("Cannot use explicit dereference on struct fields directly. Try \
+               just `" ^ name ^ "` as property accesses auto-dereference."));
       let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
       let inner_ty =
         match ast_ty with
@@ -373,7 +393,13 @@ and codegen_expr = function
                       in
                       let self_ty_llvm = type_of self_val in
 
-                      match struct_name self_ty_llvm with
+                      let actual_struct_ty, is_self_ptr =
+                        if classify_type self_ty_llvm = TypeKind.Pointer then
+                          (element_type self_ty_llvm, true)
+                        else (self_ty_llvm, false)
+                      in
+
+                      match struct_name actual_struct_ty with
                       | Some s_name ->
                           let clean_name =
                             if String.starts_with ~prefix:"struct." s_name then
@@ -392,9 +418,35 @@ and codegen_expr = function
                           in
                           let ft = Hashtbl.find function_types mangled_name in
                           let expected_tys = param_types ft in
+
+                          let expected_self_ty = expected_tys.(0) in
                           let coerced_self =
-                            coerce_value expected_tys.(0) self_val
+                            if classify_type expected_self_ty = TypeKind.Pointer
+                            then
+                              if is_self_ptr then self_val
+                              else
+                                let get_ptr_to_name path =
+                                  if String.contains path '.' then
+                                    let parts = String.split_on_char '.' path in
+                                    let base_name = List.hd parts in
+                                    let v, ast_ty, _ =
+                                      Hashtbl.find named_values base_name
+                                    in
+                                    resolve_property_ptr v (llvm_type_of ast_ty)
+                                      (List.tl parts)
+                                  else
+                                    let v, _, _ =
+                                      Hashtbl.find named_values path
+                                    in
+                                    v
+                                in
+                                get_ptr_to_name base_path
+                            else if is_self_ptr then
+                              build_load actual_struct_ty self_val "deref_self"
+                                ce_builder
+                            else coerce_value expected_self_ty self_val
                           in
+
                           let arg_vals =
                             List.mapi
                               (fun i arg ->
@@ -665,6 +717,38 @@ and codegen_stmt = function
           let base_name = List.hd parts in
           let v, ast_ty, _ = Hashtbl.find named_values base_name in
 
+          let is_ptr, base_struct_ast_ty =
+            match ast_ty with TPointer t -> (true, t) | t -> (false, t)
+          in
+          let base_struct_llty = llvm_type_of base_struct_ast_ty in
+
+          let base_ptr =
+            if is_ptr then
+              build_load (llvm_type_of ast_ty) v "auto_deref_ptr" ce_builder
+            else v
+          in
+
+          let rec get_gep ptr ty props =
+            match props with
+            | [] -> ptr
+            | prop :: rest ->
+                let s_name = Option.get (struct_name ty) in
+                let clean_name =
+                  if String.starts_with ~prefix:"struct." s_name then
+                    String.sub s_name 7 (String.length s_name - 7)
+                  else s_name
+                in
+                let _, field_map = Hashtbl.find struct_registry clean_name in
+                let _, idx, _ =
+                  List.find (fun (n, _, _) -> n = prop) field_map
+                in
+                let next_ptr =
+                  build_struct_gep ty ptr idx "prop_ptr" ce_builder
+                in
+                let next_ty = (struct_element_types ty).(idx) in
+                get_gep next_ptr next_ty rest
+          in
+
           let rec get_ty ty props =
             match props with
             | [] -> ty
@@ -686,9 +770,9 @@ and codegen_stmt = function
                       ^ "' on struct '" ^ clean_name ^ "'"));
                 get_ty (struct_element_types ty).(idx) rest
           in
-          let ll_ast_ty = llvm_type_of ast_ty in
-          ( resolve_property_ptr v ll_ast_ty (List.tl parts),
-            get_ty ll_ast_ty (List.tl parts) )
+
+          ( get_gep base_ptr base_struct_llty (List.tl parts),
+            get_ty base_struct_llty (List.tl parts) )
         else
           let v, ast_ty, ismut = Hashtbl.find named_values name in
           if not ismut then raise (Error "Cannot assign to immutable variable");
@@ -721,6 +805,12 @@ and codegen_stmt = function
       ignore (build_store val_to_store element_ptr ce_builder);
       val_to_store
   | DerefAssign (Let name, val_expr) ->
+      if String.contains name '.' then
+        raise
+          (Error
+             ("Cannot use explicit dereference assignment on struct fields \
+               directly. Try just `" ^ name
+            ^ " = ...` as property accesses auto-dereference."));
       let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
       let _ =
         match ast_ty with
@@ -884,9 +974,12 @@ and codegen_stmt = function
       end
       else begin
         List.iter
-          (fun (method_name, self_id, m_params, ret_ty, body) ->
+          (fun (method_name, self_id, is_ptr, m_params, ret_ty, body) ->
             let mangled_name = name ^ "::" ^ method_name in
-            let self_param = { param_name = self_id; ty = TNamed name } in
+            let base_ty = TNamed name in
+
+            let self_ty = if is_ptr then TPointer base_ty else base_ty in
+            let self_param = { param_name = self_id; ty = self_ty } in
             let all_params = self_param :: m_params in
             ignore
               (codegen_stmt

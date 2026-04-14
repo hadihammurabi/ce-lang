@@ -91,8 +91,7 @@ let get_print_any context the_module builder =
 
 let get name =
   match name with
-  (* --- 1. NEW GLOBAL ALLOCATOR --- *)
-  | "alloc" ->
+  | "malloc" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
           if List.length targ_lltypes <> 1 then
@@ -102,37 +101,6 @@ let get name =
           let elem_ty = List.hd targ_lltypes in
           let count_val = List.hd arg_vals in
           build_array_malloc elem_ty count_val "alloc_tmp" builder)
-  (* --- 2. GLOBAL BOX UTILITY --- *)
-  | "box" ->
-      Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
-          if List.length arg_vals <> 1 then
-            raise (Error "box expects exactly 1 argument");
-          let raw_val = List.hd arg_vals in
-          let raw_ty = type_of raw_val in
-          let malloc_val = build_malloc raw_ty "box_malloc" builder in
-          ignore (build_store raw_val malloc_val builder);
-          let ptr_ty = pointer_type context in
-          let data_ptr = build_bitcast malloc_val ptr_ty "box_data" builder in
-
-          let type_tag =
-            match classify_type raw_ty with
-            | TypeKind.Integer ->
-                let bw = integer_bitwidth raw_ty in
-                if bw = 1 then 3 else if bw = 8 then 5 else 1
-            | TypeKind.Double -> 2
-            | TypeKind.Pointer -> 4
-            | _ -> 0
-          in
-          let tag_val = const_int (i64_type context) type_tag in
-          let vtable_ptr = build_inttoptr tag_val ptr_ty "box_tag" builder in
-
-          let iface_ty = struct_type context [| ptr_ty; ptr_ty |] in
-          let box_0 =
-            build_insertvalue (const_null iface_ty) data_ptr 0 "box_d" builder
-          in
-          build_insertvalue box_0 vtable_ptr 1 "box_v" builder)
-  (* --- 3. RUNTIME TYPE CHECKER --- *)
   | "typeOf" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
@@ -210,7 +178,6 @@ let get name =
                 | None -> str_unk
                 end
           | _ -> str_unk)
-  (* --- 4. PRINTLN LOGIC --- *)
   | "println" | "print" | "printf" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->

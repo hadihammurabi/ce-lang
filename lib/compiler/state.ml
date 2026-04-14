@@ -17,7 +17,7 @@ let struct_templates :
 let impl_templates :
     ( string,
       (string * types) list
-      * (string * string * param list * types * stmt list) list )
+      * (string * string * bool * param list * types * stmt list) list )
     Hashtbl.t =
   Hashtbl.create 10
 

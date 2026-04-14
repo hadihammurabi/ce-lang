@@ -171,11 +171,15 @@ impl_method_list:
   |  { [] }
   | m = impl_method sep_opt rest = impl_method_list { m :: rest }
 
-impl_method:
+  impl_method:
   | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
-    { (name, self_id, [], ret_ty, body) }
+    { (name, self_id, false, [], ret_ty, body) }
+  | FN name = IDENT LPAREN AMP self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
+    { (name, self_id, true, [], ret_ty, body) }
   | FN name = IDENT LPAREN self_id = IDENT COMMA params = separated_list(COMMA, param) RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
-    { (name, self_id, params, ret_ty, body) }
+    { (name, self_id, false, params, ret_ty, body) }
+  | FN name = IDENT LPAREN AMP self_id = IDENT COMMA params = separated_list(COMMA, param) RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
+    { (name, self_id, true, params, ret_ty, body) }
 
 def_trait:
   | TRAIT name = IDENT LBRACE sep_opt RBRACE 

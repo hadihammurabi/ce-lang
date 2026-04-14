@@ -173,7 +173,7 @@ and namespace_stmt prefix decls = function
       in
       let s_methods =
         List.map
-          (fun (m_name, self_id, m_params, ret_ty, body) ->
+          (fun (m_name, self_id, is_ptr, m_params, ret_ty, body) ->
             let s_params =
               List.map
                 (fun p ->
@@ -185,6 +185,7 @@ and namespace_stmt prefix decls = function
             in
             ( m_name,
               self_id,
+              is_ptr,
               s_params,
               namespace_type prefix decls ret_ty,
               List.map (namespace_stmt prefix decls) body ))

@@ -11,18 +11,18 @@ impl Slice[T any] {
     if index >= self.len {
       raise "unbound index"
     }
-    let val *T = self.ptr
-    let so int = mem.sizeOf(*val)
-    let search *T = self.ptr + (index * so)
+
+    let start *T = self.ptr
+    let search *T = self.ptr + (index * mem.sizeOf(*start))
     return *search
   }
 
-  fn append(self, item T) Slice[T] {
+  fn append(&self, item T) Slice[T] {
     let so int = mem.sizeOf(item)
 
     if self.len >= self.cap {
       let new_cap int = if self.cap == 0 { 4 } else { self.cap * 2 }
-      let new_ptr *T = alloc[T](new_cap)
+      let new_ptr *T = malloc[T](new_cap)
       let mut i int = 0
 
       for {
