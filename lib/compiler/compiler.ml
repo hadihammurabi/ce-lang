@@ -650,7 +650,7 @@ and coerce_value expected_ll_ty raw_val =
     in
     if is_result then begin
       let is_err = build_extractvalue raw_val 0 "is_err" ce_builder in
-      
+
       let the_func = block_parent (insertion_block ce_builder) in
       let err_bb = append_block ce_ctx "unwrap_err" the_func in
       let ok_bb = append_block ce_ctx "unwrap_ok" the_func in
@@ -660,22 +660,30 @@ and coerce_value expected_ll_ty raw_val =
 
       position_at_end err_bb ce_builder;
       let err_msg = build_extractvalue raw_val 2 "err_msg" ce_builder in
-      let printf_ty = var_arg_function_type (i32_type ce_ctx) [| pointer_type ce_ctx |] in
-      let printf_fn = 
+      let printf_ty =
+        var_arg_function_type (i32_type ce_ctx) [| pointer_type ce_ctx |]
+      in
+      let printf_fn =
         match lookup_function "printf" ce_module with
         | Some f -> f
         | None -> declare_function "printf" printf_ty ce_module
       in
-      let err_fmt = build_global_stringptr "Uncaught Error: %s\n" "err_fmt" ce_builder in
-      ignore (build_call printf_ty printf_fn [| err_fmt; err_msg |] "p" ce_builder);
-      
+      let err_fmt =
+        build_global_stringptr "Uncaught Error: %s\n" "err_fmt" ce_builder
+      in
+      ignore
+        (build_call printf_ty printf_fn [| err_fmt; err_msg |] "p" ce_builder);
+
       let exit_ty = function_type (void_type ce_ctx) [| i32_type ce_ctx |] in
       let exit_fn =
         match lookup_function "exit" ce_module with
         | Some f -> f
         | None -> declare_function "exit" exit_ty ce_module
       in
-      ignore (build_call exit_ty exit_fn [| const_int (i32_type ce_ctx) 1 |] "exit_call" ce_builder);
+      ignore
+        (build_call exit_ty exit_fn
+           [| const_int (i32_type ce_ctx) 1 |]
+           "exit_call" ce_builder);
       ignore (build_unreachable ce_builder);
 
       position_at_end ok_bb ce_builder;
@@ -685,10 +693,8 @@ and coerce_value expected_ll_ty raw_val =
       ignore (build_br merge_bb ce_builder);
 
       position_at_end merge_bb ce_builder;
-      if expected_ll_ty = void_type ce_ctx then
-         const_null (void_type ce_ctx)
-      else
-         build_phi [ (final_val, final_ok_bb) ] "unwrap_res" ce_builder
+      if expected_ll_ty = void_type ce_ctx then const_null (void_type ce_ctx)
+      else build_phi [ (final_val, final_ok_bb) ] "unwrap_res" ce_builder
     end
     else
       let is_interface =
@@ -718,7 +724,9 @@ and coerce_value expected_ll_ty raw_val =
           | _ -> 0
         in
         let tag_val = const_int (i64_type ce_ctx) type_tag in
-        let vtable_ptr = build_inttoptr tag_val ptr_ty "autobox_tag" ce_builder in
+        let vtable_ptr =
+          build_inttoptr tag_val ptr_ty "autobox_tag" ce_builder
+        in
 
         let box_0 =
           build_insertvalue
@@ -748,8 +756,7 @@ and codegen_stmt = function
             && elems.(2) = pointer_type ce_ctx
         | _ -> false
       in
-      if is_result then
-        ignore (coerce_value ((struct_element_types ty).(1)) v);
+      if is_result then ignore (coerce_value (struct_element_types ty).(1) v);
       const_null (void_type ce_ctx)
   | DefLet (name, ismut, ty, expr_opt) ->
       let ll_ty = llvm_type_of ty in
@@ -1127,7 +1134,7 @@ let export binary_name the_module =
   Llvm_target.TargetMachine.emit_to_file the_module
     Llvm_target.CodeGenFileType.ObjectFile obj_filename machine;
 
-  let link_cmd = Printf.sprintf "cc %s -o %s" obj_filename binary_name in
+  let link_cmd = Printf.sprintf "cc %s -lgc -o %s" obj_filename binary_name in
   match Sys.command link_cmd with
   | 0 ->
       if Sys.file_exists obj_filename then Sys.remove obj_filename;

@@ -93,17 +93,7 @@ let get_print_any context the_module builder =
 
 let get name =
   match name with
-  | "mAlloc" ->
-      Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
-          if List.length targ_lltypes <> 1 then
-            raise (Error "alloc expects exactly 1 type argument");
-          if List.length arg_vals <> 1 then
-            raise (Error "alloc expects exactly 1 size argument");
-          let elem_ty = List.hd targ_lltypes in
-          let count_val = List.hd arg_vals in
-          build_array_malloc elem_ty count_val "alloc_tmp" builder)
-  | "typeOf" ->
+  | "typeof" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
           if List.length arg_vals <> 1 then
@@ -254,7 +244,7 @@ let get name =
                   && elems.(2) = pointer_type context
                 then begin
                   let is_err = build_extractvalue v 0 "is_err" builder in
-                  
+
                   let the_func = block_parent (insertion_block builder) in
                   let err_bb = append_block context "res_err" the_func in
                   let ok_bb = append_block context "res_ok" the_func in
@@ -264,17 +254,21 @@ let get name =
 
                   position_at_end err_bb builder;
                   let err_msg = build_extractvalue v 2 "err_msg" builder in
-                  let err_fmt = build_global_stringptr "Error: %s" "err_fmt" builder in
-                  ignore (build_call printf_ty printf_func [| err_fmt; err_msg |] "p" builder);
+                  let err_fmt =
+                    build_global_stringptr "Error: %s" "err_fmt" builder
+                  in
+                  ignore
+                    (build_call printf_ty printf_func [| err_fmt; err_msg |] "p"
+                       builder);
                   ignore (build_br merge_bb builder);
 
                   position_at_end ok_bb builder;
                   let ok_val = build_extractvalue v 1 "ok_val" builder in
-                  print_arg ok_val; 
-                  
+                  print_arg ok_val;
+
                   ignore (build_br merge_bb builder);
 
-                  position_at_end merge_bb builder;
+                  position_at_end merge_bb builder
                 end
                 else begin
                   print_str "{";
@@ -286,7 +280,6 @@ let get name =
                   done;
                   print_str "}"
                 end
-
             | TypeKind.Array ->
                 print_str "[";
                 let len = array_length ty in
@@ -309,36 +302,35 @@ let get name =
           if fn_name = "println" then print_str "\n";
 
           const_int (i32_type context) 0)
-  | "cAlloc" ->
+  | "malloc" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
           if List.length targ_lltypes <> 1 then
-            raise (Error "cAlloc expects exactly 1 type argument");
+            raise (Error (fn_name ^ " expects exactly 1 type argument"));
           if List.length arg_vals <> 1 then
-            raise (Error "cAlloc expects exactly 1 size argument");
+            raise (Error (fn_name ^ " expects exactly 1 size argument"));
 
           let elem_ty = List.hd targ_lltypes in
           let count_val = List.hd arg_vals in
           let size_val = size_of elem_ty in
 
-          let calloc_ty =
-            function_type (pointer_type context)
-              [| i64_type context; i64_type context |]
-          in
-          let calloc_fn =
-            match lookup_function "calloc" the_module with
+          let total_size = build_mul count_val size_val "alloc_size" builder in
+          let ptr_ty = pointer_type context in
+          let gc_malloc_ty = function_type ptr_ty [| i64_type context |] in
+          let gc_malloc_fn =
+            match lookup_function "GC_malloc" the_module with
             | Some f -> f
-            | None -> declare_function "calloc" calloc_ty the_module
+            | None -> declare_function "GC_malloc" gc_malloc_ty the_module
           in
-          build_call calloc_ty calloc_fn [| count_val; size_val |] "cAlloc_tmp"
+          build_call gc_malloc_ty gc_malloc_fn [| total_size |] "gc_alloc_tmp"
             builder)
-  | "reAlloc" ->
+  | "realloc" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
           if List.length targ_lltypes <> 1 then
-            raise (Error "reAlloc expects exactly 1 type argument");
+            raise (Error "realloc expects exactly 1 type argument");
           if List.length arg_vals <> 2 then
-            raise (Error "reAlloc expects exactly 2 arguments (ptr, new_size)");
+            raise (Error "realloc expects exactly 2 arguments (ptr, new_size)");
 
           let elem_ty = List.hd targ_lltypes in
           let ptr_val = List.hd arg_vals in
@@ -347,25 +339,21 @@ let get name =
           let total_size =
             build_mul count_val size_val "realloc_size" builder
           in
-          let realloc_ty =
-            function_type (pointer_type context)
-              [| pointer_type context; i64_type context |]
+
+          let ptr_ty = pointer_type context in
+          let gc_realloc_ty =
+            function_type ptr_ty [| ptr_ty; i64_type context |]
           in
-          let realloc_fn =
-            match lookup_function "realloc" the_module with
+          let gc_realloc_fn =
+            match lookup_function "GC_realloc" the_module with
             | Some f -> f
-            | None -> declare_function "realloc" realloc_ty the_module
+            | None -> declare_function "GC_realloc" gc_realloc_ty the_module
           in
 
-          build_call realloc_ty realloc_fn [| ptr_val; total_size |]
-            "reAlloc_tmp" builder)
+          build_call gc_realloc_ty gc_realloc_fn [| ptr_val; total_size |]
+            "gc_realloc_tmp" builder)
   | "free" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
-          if List.length arg_vals <> 1 then
-            raise (Error "free expects exactly 1 argument (ptr)");
-
-          let ptr_val = List.hd arg_vals in
-          ignore (build_free ptr_val builder);
           const_null (void_type context))
   | _ -> None

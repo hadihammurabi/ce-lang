@@ -1,5 +1,5 @@
 fn sizeOf(val any) int {
-  let typeName string = typeOf(val)
+  let typeName string = typeof(val)
   
   return if typeName == "int" { 8 
   } else if typeName == "float" { 8 

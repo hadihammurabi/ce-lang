@@ -7,21 +7,16 @@ fn assert(condition bool) !void {
   }
 }
 
-fn typeOf(x any) string {
+fn typeof(x any) string {
   return "unknown"
 }
 
-fn mAlloc<T any>(size int) *T {
+fn malloc<T any>(size int) *T {
   let dummy T
   return &dummy
 }
 
-fn cAlloc<T any>(size int) *T {
-  let dummy T
-  return &dummy
-}
-
-fn reAlloc<T any>(ptr *T, new_size int) *T {
+fn realloc<T any>(ptr *T, new_size int) *T {
   let dummy T
   return &dummy
 }
