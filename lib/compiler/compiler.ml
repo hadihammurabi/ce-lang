@@ -932,6 +932,8 @@ and codegen_stmt = function
         Hashtbl.add function_types actual_name ft;
 
         let f = declare_function actual_name ft ce_module in
+        set_linkage Linkage.Internal f;
+
         let bb = append_block ce_ctx "entry" f in
         position_at_end bb ce_builder;
 
