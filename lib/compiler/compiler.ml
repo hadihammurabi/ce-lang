@@ -145,6 +145,7 @@ and instantiate_generic_fn name targs =
 
 and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
+  | Nil -> const_null (pointer_type ce_ctx)
   | Int n -> const_int (i64_type ce_ctx) n
   | Float f -> const_float (double_type ce_ctx) f
   | Bool b -> const_int (i1_type ce_ctx) (if b then 1 else 0)

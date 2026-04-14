@@ -9,9 +9,8 @@
 %token          PLUS MINUS STAR SLASH MOD EQEQ LT LTE GT GTE AND OR BANG
 %token          LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA EQUALS DOT AMP SEMICOLON
 %token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL RAISE CATCH STRUCT TRAIT
-%token          TYPE_BOOL TRUE FALSE
-%token          TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
-%token          LET MUT FN IF ELSE FOR
+%token          TYPE_BOOL TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_INT TYPE_FLOAT
+%token          LET MUT TRUE FALSE FN IF ELSE FOR NIL
 
 %left OR AND
 %left EQEQ LT LTE GT GTE
@@ -197,6 +196,7 @@ fn_signature:
 expr_simple:
   | a = array                                                     { a }
   | LPAREN e = expr RPAREN                                        { e }
+  | NIL                                                           { Nil }        
   | TRUE                                                          { Bool true }
   | FALSE                                                         { Bool false }
   | n = INT                                                       { Int n }
@@ -241,6 +241,7 @@ expr:
   
 expr_simple_no_struct:
   | a = array                                                     { a }
+  | NIL                                                           { Nil }
   | LPAREN e = expr RPAREN                                        { e }
   | TRUE                                                          { Bool true }
   | FALSE                                                         { Bool false }

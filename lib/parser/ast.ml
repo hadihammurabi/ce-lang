@@ -34,6 +34,7 @@ let rec t = function
 
 type expr =
   | Void
+  | Nil
   | String of string
   | Char of char
   | Ref of expr

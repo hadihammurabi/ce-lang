@@ -75,12 +75,14 @@ let get_print_any context the_module builder =
 
       position_at_end bb_str builder;
       let str_val2 = build_load ptr_ty data_ptr "str_val" builder in
-      print_fmt "%s" [ str_val2 ];
-      ignore (build_br bb_end builder);
 
-      position_at_end bb_char builder;
-      let char_val = build_load (i8_type context) data_ptr "char_val" builder in
-      print_fmt "%c" [ char_val ];
+      let is_null_str = build_is_null str_val2 "is_null_str" builder in
+      let nil_str = build_global_stringptr "<nil>" "nil_str" builder in
+      let print_str_val =
+        build_select is_null_str nil_str str_val2 "print_str_val" builder
+      in
+
+      print_fmt "%s" [ print_str_val ];
       ignore (build_br bb_end builder);
 
       position_at_end bb_end builder;
@@ -219,9 +221,20 @@ let get name =
                 ignore
                   (build_call printf_ty printf_func [| fmt; v |] "p" builder)
             | TypeKind.Pointer ->
+                let is_null = build_is_null v "is_null" builder in
+                let nil_str =
+                  build_global_stringptr "<nil>" "nil_str" builder
+                in
+                let ptr_ty = pointer_type context in
+                let v_cast = build_bitcast v ptr_ty "v_cast" builder in
+                let print_val =
+                  build_select is_null nil_str v_cast "print_val" builder
+                in
                 let fmt = build_global_stringptr "%s" "fmt" builder in
+
                 ignore
-                  (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                  (build_call printf_ty printf_func [| fmt; print_val |] "p"
+                     builder)
             | TypeKind.Struct ->
                 let elems = struct_element_types ty in
                 if
