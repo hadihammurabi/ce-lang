@@ -22,18 +22,8 @@ impl Slice<T any> {
 
     if self.len >= self.cap {
       let new_cap int = if self.cap == 0 { 4 } else { self.cap * 2 }
-      let new_ptr *T = malloc<T>(new_cap)
-      let mut i int = 0
-
-      for {
-        if i >= self.len { break }
-        let old_target *T = self.ptr + (i * so)
-        let new_target *T = new_ptr + (i * so)
-        *new_target = *old_target
-        i = i + 1
-      }
-
-      self.ptr = new_ptr
+      
+      self.ptr = reAlloc<T>(self.ptr, new_cap)
       self.cap = new_cap
     }
 
@@ -42,6 +32,12 @@ impl Slice<T any> {
     
     self.len = self.len + 1
     return self
+  }
+
+  fn free(&self) void {
+    free<T>(self.ptr)
+    self.len = 0
+    self.cap = 0
   }
 
   fn println(self) void {
@@ -54,7 +50,7 @@ impl Slice<T any> {
       }
       print(self.get(i) catch (e) T { return val })
 
-      if self.len-1 > 1 {
+      if self.len-1 > i {
         print(", ")
       }
       i = i + 1
@@ -63,7 +59,7 @@ impl Slice<T any> {
   }
 }
 
-fn new<t any>() Slice<t> {
-  let s Slice<t> = Slice<t>{ptr = malloc<t>(3); len = 0; cap = 3}
+fn new<t any>(cap int) Slice<t> {
+  let s Slice<t> = Slice<t>{ptr = cAlloc<t>(cap); len = cap; cap = cap}
   return s
 }

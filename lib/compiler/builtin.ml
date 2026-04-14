@@ -91,7 +91,7 @@ let get_print_any context the_module builder =
 
 let get name =
   match name with
-  | "malloc" ->
+  | "mAlloc" ->
       Some
         (fun context the_module builder fn_name arg_vals targ_lltypes ->
           if List.length targ_lltypes <> 1 then
@@ -267,4 +267,63 @@ let get name =
           if fn_name = "println" then print_str "\n";
 
           const_int (i32_type context) 0)
+  | "cAlloc" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length targ_lltypes <> 1 then
+            raise (Error "cAlloc expects exactly 1 type argument");
+          if List.length arg_vals <> 1 then
+            raise (Error "cAlloc expects exactly 1 size argument");
+
+          let elem_ty = List.hd targ_lltypes in
+          let count_val = List.hd arg_vals in
+          let size_val = size_of elem_ty in
+
+          let calloc_ty =
+            function_type (pointer_type context)
+              [| i64_type context; i64_type context |]
+          in
+          let calloc_fn =
+            match lookup_function "calloc" the_module with
+            | Some f -> f
+            | None -> declare_function "calloc" calloc_ty the_module
+          in
+          build_call calloc_ty calloc_fn [| count_val; size_val |] "cAlloc_tmp"
+            builder)
+  | "reAlloc" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length targ_lltypes <> 1 then
+            raise (Error "reAlloc expects exactly 1 type argument");
+          if List.length arg_vals <> 2 then
+            raise (Error "reAlloc expects exactly 2 arguments (ptr, new_size)");
+
+          let elem_ty = List.hd targ_lltypes in
+          let ptr_val = List.hd arg_vals in
+          let count_val = List.nth arg_vals 1 in
+          let size_val = size_of elem_ty in
+          let total_size =
+            build_mul count_val size_val "realloc_size" builder
+          in
+          let realloc_ty =
+            function_type (pointer_type context)
+              [| pointer_type context; i64_type context |]
+          in
+          let realloc_fn =
+            match lookup_function "realloc" the_module with
+            | Some f -> f
+            | None -> declare_function "realloc" realloc_ty the_module
+          in
+
+          build_call realloc_ty realloc_fn [| ptr_val; total_size |]
+            "reAlloc_tmp" builder)
+  | "free" ->
+      Some
+        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+          if List.length arg_vals <> 1 then
+            raise (Error "free expects exactly 1 argument (ptr)");
+
+          let ptr_val = List.hd arg_vals in
+          ignore (build_free ptr_val builder);
+          const_null (void_type context))
   | _ -> None
