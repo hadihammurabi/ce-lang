@@ -106,7 +106,7 @@ types:
   | t = type_scalar                       { t }
   | LBRACKET n = INT RBRACKET ty = types  { TArray (n, ty) }
   | STAR ty = types                       { TPointer ty }
-  | name = path LBRACKET arg_ty = types RBRACKET { TGenericInst (name, [arg_ty]) }
+  | name = path LT arg_ty = types GT { TGenericInst (name, [arg_ty]) }
   | BANG ty = types                       { TResult ty }
 
 array:
@@ -161,11 +161,7 @@ path:
 
 generic_params_opt:
   | { [] }
-  | LBRACKET name = IDENT ty = types RBRACKET { [(name, ty)] }
-
-generic_args_opt:
-  | { [] }
-  | LBRACKET args = separated_list(COMMA, types) RBRACKET { args }
+  | LT name = IDENT ty = types GT { [(name, ty)] }
 
 impl_method_list:
   |  { [] }
@@ -217,11 +213,11 @@ expr_simple:
   | name = path LBRACE sep_opt fields = struct_init_list RBRACE   { Struct (name, [], fields) }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
 
-  | id = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LPAREN args = separated_list(COMMA, expr) RPAREN 
+  | id = path LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN 
     { Call(id, targs, args) }
-  | name = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LBRACE sep_opt RBRACE
+  | name = path LT targs = separated_list(COMMA, types) GT LBRACE sep_opt RBRACE
     { Struct (name, targs, []) }
-  | name = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LBRACE sep_opt fields = struct_init_list RBRACE
+  | name = path LT targs = separated_list(COMMA, types) GT LBRACE sep_opt fields = struct_init_list RBRACE
     { Struct (name, targs, fields) }
 
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
@@ -258,7 +254,7 @@ expr_simple_no_struct:
   | STAR e = expr_simple_no_struct                                { Deref e }
   | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
-  | id = path LBRACKET targs = separated_list(COMMA, types) RBRACKET LPAREN args = separated_list(COMMA, expr) RPAREN 
+  | id = path LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN 
     { Call(id, targs, args) }
 
 expr_no_struct:

@@ -11,7 +11,7 @@ fn typeOf(x any) string {
   return "unknown"
 }
 
-fn malloc[T any](size int) *T {
+fn malloc<T any>(size int) *T {
   let dummy T
   return &dummy
 }

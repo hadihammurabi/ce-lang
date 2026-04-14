@@ -27,9 +27,11 @@ let rec llvm_type_of = function
                   struct_type ce_ctx
                     [| pointer_type ce_ctx; pointer_type ce_ctx |]
               | None -> raise (Error ("Undefined type: " ^ name)))))
-  | TStruct name ->
-      let llty, _ = Hashtbl.find struct_registry name in
-      llty
+  | TStruct name -> (
+      try
+        let llty, _ = Hashtbl.find struct_registry name in
+        llty
+      with Not_found -> raise (Error ("Unknown struct '" ^ name ^ "'")))
   | TUnknown -> raise (Error "Cannot compile unknown type")
   | TGenericParam name ->
       raise (Error ("Uninstantiated generic parameter '" ^ name))
@@ -48,7 +50,12 @@ let rec llvm_type_of = function
             try Some (insertion_block ce_builder) with Not_found -> None
           in
 
-          let params, fields = Hashtbl.find struct_templates name in
+          let params, fields =
+            try Hashtbl.find struct_templates name
+            with Not_found ->
+              raise
+                (Error ("Cannot find generic struct template for '" ^ name ^ "'"))
+          in
           let type_map =
             List.map2
               (fun (p_name, _) arg_ty -> (p_name, arg_ty))
@@ -240,9 +247,12 @@ and codegen_expr = function
         | Some (v, ast_ty, _) ->
             build_load (llvm_type_of ast_ty) v name ce_builder
         | None -> raise (Error ("Unknown variable: " ^ name)))
-  | Ref (Let name) ->
-      let ptr_val, _, _ = Hashtbl.find named_values name in
-      ptr_val
+  | Ref (Let name) -> (
+      try
+        let ptr_val, _, _ = Hashtbl.find named_values name in
+        ptr_val
+      with Not_found ->
+        raise (Error ("Cannot reference unknown variable: '" ^ name ^ "'")))
   | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
   | Deref (Let name) ->
       if String.contains name '.' then
@@ -250,7 +260,11 @@ and codegen_expr = function
           (Error
              ("Cannot use explicit dereference on struct fields directly. Try \
                just `" ^ name ^ "` as property accesses auto-dereference."));
-      let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
+      let ptr_to_ptr, ast_ty, _ =
+        try Hashtbl.find named_values name
+        with Not_found ->
+          raise (Error ("Cannot dereference unknown variable: '" ^ name ^ "'"))
+      in
       let inner_ty =
         match ast_ty with
         | TPointer t -> t
@@ -546,7 +560,11 @@ and codegen_expr = function
         if type_args = [] then name
         else name ^ "_" ^ String.concat "_" (List.map show_types type_args)
       in
-      let llty, field_map = Hashtbl.find struct_registry mangled_name in
+      let llty, field_map =
+        try Hashtbl.find struct_registry mangled_name
+        with Not_found ->
+          raise (Error ("Cannot find struct '" ^ name ^ "' for instantiation"))
+      in
       let alloc = build_alloca llty "structtmp" ce_builder in
 
       List.iter
@@ -774,8 +792,13 @@ and codegen_stmt = function
           ( get_gep base_ptr base_struct_llty (List.tl parts),
             get_ty base_struct_llty (List.tl parts) )
         else
-          let v, ast_ty, ismut = Hashtbl.find named_values name in
-          if not ismut then raise (Error "Cannot assign to immutable variable");
+          let v, ast_ty, ismut =
+            try Hashtbl.find named_values name
+            with Not_found ->
+              raise (Error ("Unknown variable: '" ^ name ^ "'"))
+          in
+          if not ismut then
+            raise (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
           (v, llvm_type_of ast_ty)
       in
       let val_to_store = coerce_value expected_ll_ty val_ in

@@ -124,16 +124,6 @@ and namespace_expr prefix decls = function
 
 and namespace_stmt prefix decls = function
   | Expr e -> Expr (namespace_expr prefix decls e)
-  | DefFN (name, tparams, params, ty, body) ->
-      let new_name =
-        if List.mem name decls then prefix ^ "." ^ name else name
-      in
-      DefFN
-        ( new_name,
-          tparams,
-          params,
-          ty,
-          List.map (namespace_stmt prefix decls) body )
   | DefLet (name, is_mut, ty, e) ->
       let new_e =
         match e with
@@ -152,24 +142,49 @@ and namespace_stmt prefix decls = function
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
   | For stmts -> For (List.map (namespace_stmt prefix decls) stmts)
   | Raise e -> Raise (namespace_expr prefix decls e)
-  | DefInterface (name, sigs) ->
+  | DefFN (name, tparams, params, ty, body) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
       in
-      DefInterface (new_name, sigs)
+      let ns_tparams =
+        List.map (fun (n, t) -> (n, namespace_type prefix decls t)) tparams
+      in
+      let ns_params =
+        List.map
+          (fun p ->
+            { param_name = p.param_name; ty = namespace_type prefix decls p.ty })
+          params
+      in
+      DefFN
+        ( new_name,
+          ns_tparams,
+          ns_params,
+          namespace_type prefix decls ty,
+          List.map (namespace_stmt prefix decls) body )
   | DefStruct (name, params, fields) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      let ns_params =
+        List.map (fun (n, t) -> (n, namespace_type prefix decls t)) params
       in
       let s_fields =
         List.map
           (fun f -> { f with ty = namespace_type prefix decls f.ty })
           fields
       in
-      DefStruct (new_name, params, s_fields)
+      DefStruct (new_name, ns_params, s_fields)
+  | DefInterface (name, sigs) ->
+      let new_name =
+        if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      DefInterface (new_name, sigs)
   | Impl (name, params, methods) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name
+      in
+      let ns_params =
+        List.map (fun (n, t) -> (n, namespace_type prefix decls t)) params
       in
       let s_methods =
         List.map
@@ -191,7 +206,7 @@ and namespace_stmt prefix decls = function
               List.map (namespace_stmt prefix decls) body ))
           methods
       in
-      Impl (new_name, params, s_methods)
+      Impl (new_name, ns_params, s_methods)
   | s -> s
 
 let rec process_file_inner visited filepath namespace_prefix =

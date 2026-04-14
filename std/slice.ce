@@ -1,12 +1,12 @@
 import mem
 
-struct Slice[T any] {
+struct Slice<T any> {
   mut ptr *T;
   mut len int;
   mut cap int;
 }
 
-impl Slice[T any] {
+impl Slice<T any> {
   fn get(self, index int) !T {
     if index >= self.len {
       raise "unbound index"
@@ -17,12 +17,12 @@ impl Slice[T any] {
     return *search
   }
 
-  fn append(&self, item T) Slice[T] {
+  fn append(&self, item T) Slice<T> {
     let so int = mem.sizeOf(item)
 
     if self.len >= self.cap {
       let new_cap int = if self.cap == 0 { 4 } else { self.cap * 2 }
-      let new_ptr *T = malloc[T](new_cap)
+      let new_ptr *T = malloc<T>(new_cap)
       let mut i int = 0
 
       for {
@@ -54,11 +54,16 @@ impl Slice[T any] {
       }
       print(self.get(i) catch (e) T { return val })
 
-      if i < self.len-1 {
+      if self.len-1 > 1 {
         print(", ")
       }
       i = i + 1
     }
     println("}")
   }
+}
+
+fn new<t any>() Slice<t> {
+  let s Slice<t> = Slice<t>{ptr = malloc<t>(3); len = 0; cap = 3}
+  return s
 }
