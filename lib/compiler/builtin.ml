@@ -248,6 +248,34 @@ let get name =
                        (function_type (void_type context) [| ty |])
                        print_any_f [| v |] "p" builder)
                 end
+                else if
+                  Array.length elems = 3
+                  && elems.(0) = i1_type context
+                  && elems.(2) = pointer_type context
+                then begin
+                  let is_err = build_extractvalue v 0 "is_err" builder in
+                  
+                  let the_func = block_parent (insertion_block builder) in
+                  let err_bb = append_block context "res_err" the_func in
+                  let ok_bb = append_block context "res_ok" the_func in
+                  let merge_bb = append_block context "res_merge" the_func in
+
+                  ignore (build_cond_br is_err err_bb ok_bb builder);
+
+                  position_at_end err_bb builder;
+                  let err_msg = build_extractvalue v 2 "err_msg" builder in
+                  let err_fmt = build_global_stringptr "Error: %s" "err_fmt" builder in
+                  ignore (build_call printf_ty printf_func [| err_fmt; err_msg |] "p" builder);
+                  ignore (build_br merge_bb builder);
+
+                  position_at_end ok_bb builder;
+                  let ok_val = build_extractvalue v 1 "ok_val" builder in
+                  print_arg ok_val; 
+                  
+                  ignore (build_br merge_bb builder);
+
+                  position_at_end merge_bb builder;
+                end
                 else begin
                   print_str "{";
                   let len = Array.length elems in
@@ -258,6 +286,7 @@ let get name =
                   done;
                   print_str "}"
                 end
+
             | TypeKind.Array ->
                 print_str "[";
                 let len = array_length ty in

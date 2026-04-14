@@ -639,54 +639,117 @@ and coerce_value expected_ll_ty raw_val =
   let raw_ty = type_of raw_val in
   if raw_ty = expected_ll_ty then raw_val
   else
-    let is_interface =
-      match classify_type expected_ll_ty with
+    let is_result =
+      match classify_type raw_ty with
       | TypeKind.Struct ->
-          let elems = struct_element_types expected_ll_ty in
-          Array.length elems = 2
-          && elems.(0) = pointer_type ce_ctx
-          && elems.(1) = pointer_type ce_ctx
+          let elems = struct_element_types raw_ty in
+          Array.length elems = 3
+          && elems.(0) = i1_type ce_ctx
+          && elems.(2) = pointer_type ce_ctx
       | _ -> false
     in
+    if is_result then begin
+      let is_err = build_extractvalue raw_val 0 "is_err" ce_builder in
+      
+      let the_func = block_parent (insertion_block ce_builder) in
+      let err_bb = append_block ce_ctx "unwrap_err" the_func in
+      let ok_bb = append_block ce_ctx "unwrap_ok" the_func in
+      let merge_bb = append_block ce_ctx "unwrap_merge" the_func in
 
-    if is_interface then begin
-      let malloc_val = build_malloc raw_ty "autobox_malloc" ce_builder in
-      ignore (build_store raw_val malloc_val ce_builder);
+      ignore (build_cond_br is_err err_bb ok_bb ce_builder);
 
-      let ptr_ty = pointer_type ce_ctx in
-      let data_ptr =
-        build_bitcast malloc_val ptr_ty "autobox_data" ce_builder
+      position_at_end err_bb ce_builder;
+      let err_msg = build_extractvalue raw_val 2 "err_msg" ce_builder in
+      let printf_ty = var_arg_function_type (i32_type ce_ctx) [| pointer_type ce_ctx |] in
+      let printf_fn = 
+        match lookup_function "printf" ce_module with
+        | Some f -> f
+        | None -> declare_function "printf" printf_ty ce_module
       in
-      let type_tag =
-        match classify_type raw_ty with
-        | TypeKind.Integer ->
-            let bw = integer_bitwidth raw_ty in
-            if bw = 1 then 3 else if bw = 8 then 5 else 1
-        | TypeKind.Double -> 2
-        | TypeKind.Pointer -> 4
-        | _ -> 0
+      let err_fmt = build_global_stringptr "Uncaught Error: %s\n" "err_fmt" ce_builder in
+      ignore (build_call printf_ty printf_fn [| err_fmt; err_msg |] "p" ce_builder);
+      
+      let exit_ty = function_type (void_type ce_ctx) [| i32_type ce_ctx |] in
+      let exit_fn =
+        match lookup_function "exit" ce_module with
+        | Some f -> f
+        | None -> declare_function "exit" exit_ty ce_module
       in
-      let tag_val = const_int (i64_type ce_ctx) type_tag in
-      let vtable_ptr = build_inttoptr tag_val ptr_ty "autobox_tag" ce_builder in
+      ignore (build_call exit_ty exit_fn [| const_int (i32_type ce_ctx) 1 |] "exit_call" ce_builder);
+      ignore (build_unreachable ce_builder);
 
-      let box_0 =
-        build_insertvalue
-          (const_null expected_ll_ty)
-          data_ptr 0 "autobox_d" ce_builder
-      in
-      build_insertvalue box_0 vtable_ptr 1 "autobox_v" ce_builder
+      position_at_end ok_bb ce_builder;
+      let ok_val = build_extractvalue raw_val 1 "ok_val" ce_builder in
+      let final_val = coerce_value expected_ll_ty ok_val in
+      let final_ok_bb = insertion_block ce_builder in
+      ignore (build_br merge_bb ce_builder);
+
+      position_at_end merge_bb ce_builder;
+      if expected_ll_ty = void_type ce_ctx then
+         const_null (void_type ce_ctx)
+      else
+         build_phi [ (final_val, final_ok_bb) ] "unwrap_res" ce_builder
     end
-    else if
-      classify_type expected_ll_ty = TypeKind.Pointer
-      && classify_type raw_ty = TypeKind.Pointer
-    then begin
-      build_bitcast raw_val expected_ll_ty "ptr_cast" ce_builder
-    end
-    else raw_val
+    else
+      let is_interface =
+        match classify_type expected_ll_ty with
+        | TypeKind.Struct ->
+            let elems = struct_element_types expected_ll_ty in
+            Array.length elems = 2
+            && elems.(0) = pointer_type ce_ctx
+            && elems.(1) = pointer_type ce_ctx
+        | _ -> false
+      in
+
+      if is_interface then begin
+        let malloc_val = build_malloc raw_ty "autobox_malloc" ce_builder in
+        ignore (build_store raw_val malloc_val ce_builder);
+        let ptr_ty = pointer_type ce_ctx in
+        let data_ptr =
+          build_bitcast malloc_val ptr_ty "autobox_data" ce_builder
+        in
+        let type_tag =
+          match classify_type raw_ty with
+          | TypeKind.Integer ->
+              let bw = integer_bitwidth raw_ty in
+              if bw = 1 then 3 else if bw = 8 then 5 else 1
+          | TypeKind.Double -> 2
+          | TypeKind.Pointer -> 4
+          | _ -> 0
+        in
+        let tag_val = const_int (i64_type ce_ctx) type_tag in
+        let vtable_ptr = build_inttoptr tag_val ptr_ty "autobox_tag" ce_builder in
+
+        let box_0 =
+          build_insertvalue
+            (const_null expected_ll_ty)
+            data_ptr 0 "autobox_d" ce_builder
+        in
+        build_insertvalue box_0 vtable_ptr 1 "autobox_v" ce_builder
+      end
+      else if
+        classify_type expected_ll_ty = TypeKind.Pointer
+        && classify_type raw_ty = TypeKind.Pointer
+      then begin
+        build_bitcast raw_val expected_ll_ty "ptr_cast" ce_builder
+      end
+      else raw_val
 
 and codegen_stmt = function
   | Expr e ->
-      ignore (codegen_expr e);
+      let v = codegen_expr e in
+      let ty = type_of v in
+      let is_result =
+        match classify_type ty with
+        | TypeKind.Struct ->
+            let elems = struct_element_types ty in
+            Array.length elems = 3
+            && elems.(0) = i1_type ce_ctx
+            && elems.(2) = pointer_type ce_ctx
+        | _ -> false
+      in
+      if is_result then
+        ignore (coerce_value ((struct_element_types ty).(1)) v);
       const_null (void_type ce_ctx)
   | DefLet (name, ismut, ty, expr_opt) ->
       let ll_ty = llvm_type_of ty in
