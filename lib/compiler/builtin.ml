@@ -1,4 +1,5 @@
 open Llvm
+open Ce_parser.Ast
 
 exception Error of string
 
@@ -95,7 +96,14 @@ let get name =
   match name with
   | "typeof" ->
       Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+        (fun context
+          the_module
+          builder
+          fn_name
+          arg_vals
+          targ_lltypes
+          arg_asts
+        ->
           if List.length arg_vals <> 1 then
             raise (Error "typeOf expects exactly 1 argument");
           let arg_val = List.hd arg_vals in
@@ -179,7 +187,14 @@ let get name =
           | _ -> str_unk)
   | "println" | "print" | "printf" ->
       Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+        (fun context
+          the_module
+          builder
+          fn_name
+          arg_vals
+          targ_lltypes
+          arg_asts
+        ->
           let printf_func = get_printf context the_module in
           let printf_ty =
             var_arg_function_type (i32_type context) [| pointer_type context |]
@@ -190,7 +205,7 @@ let get name =
             ignore (build_call printf_ty printf_func [| fmt |] "p" builder)
           in
 
-          let rec print_arg v =
+          let rec print_arg v ast_ty =
             let ty = type_of v in
             match classify_type ty with
             | TypeKind.Integer ->
@@ -207,23 +222,47 @@ let get name =
                   let v_i32 =
                     build_intcast v (i32_type context) "cast_i32" builder
                   in
-                  let fmt = build_global_stringptr "%d" "fmt" builder in
+                  let is_unsigned =
+                    match ast_ty with
+                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+                    | _ -> false
+                  in
+                  let fmt_str = if is_unsigned then "%u" else "%d" in
+                  let fmt = build_global_stringptr fmt_str "fmt" builder in
                   ignore
                     (build_call printf_ty printf_func [| fmt; v_i32 |] "p"
                        builder)
                 end
                 else if bw = 64 then begin
-                  let fmt = build_global_stringptr "%ld" "fmt" builder in
+                  let is_unsigned =
+                    match ast_ty with
+                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+                    | _ -> false
+                  in
+                  let fmt_str = if is_unsigned then "%lu" else "%ld" in
+                  let fmt = build_global_stringptr fmt_str "fmt" builder in
                   ignore
                     (build_call printf_ty printf_func [| fmt; v |] "p" builder)
                 end
                 else begin
-                  let v_i64 =
-                    build_intcast v (i64_type context) "cast_i128" builder
+                  let is_unsigned =
+                    match ast_ty with
+                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+                    | _ -> false
                   in
-                  let fmt = build_global_stringptr "%ld" "fmt" builder in
+
+                  let v_float =
+                    if is_unsigned then
+                      build_uitofp v (double_type context) "cast_u128_to_f64"
+                        builder
+                    else
+                      build_sitofp v (double_type context) "cast_i128_to_f64"
+                        builder
+                  in
+
+                  let fmt = build_global_stringptr "%e" "fmt" builder in
                   ignore
-                    (build_call printf_ty printf_func [| fmt; v_i64 |] "p"
+                    (build_call printf_ty printf_func [| fmt; v_float |] "p"
                        builder)
                 end
             | TypeKind.Double ->
@@ -291,7 +330,10 @@ let get name =
 
                   position_at_end ok_bb builder;
                   let ok_val = build_extractvalue v 1 "ok_val" builder in
-                  print_arg ok_val;
+                  let ok_ast_ty =
+                    match ast_ty with TResult t -> t | _ -> TUnknown
+                  in
+                  print_arg ok_val ok_ast_ty;
 
                   ignore (build_br merge_bb builder);
 
@@ -302,7 +344,7 @@ let get name =
                   let len = Array.length elems in
                   for i = 0 to len - 1 do
                     let elem = build_extractvalue v i "ext" builder in
-                    print_arg elem;
+                    print_arg elem TUnknown;
                     if i < len - 1 then print_str ", "
                   done;
                   print_str "}"
@@ -312,7 +354,10 @@ let get name =
                 let len = array_length ty in
                 for i = 0 to len - 1 do
                   let elem = build_extractvalue v i "ext" builder in
-                  print_arg elem;
+                  let elem_ast_ty =
+                    match ast_ty with TArray (_, t) -> t | _ -> TUnknown
+                  in
+                  print_arg elem elem_ast_ty;
                   if i < len - 1 then print_str ", "
                 done;
                 print_str "]"
@@ -322,7 +367,8 @@ let get name =
           let len = List.length arg_vals in
           List.iteri
             (fun i v ->
-              print_arg v;
+              let ast_ty = List.nth arg_asts i in
+              print_arg v ast_ty;
               if i < len - 1 then print_str " ")
             arg_vals;
 
@@ -331,7 +377,14 @@ let get name =
           const_int (i32_type context) 0)
   | "malloc" ->
       Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+        (fun context
+          the_module
+          builder
+          fn_name
+          arg_vals
+          targ_lltypes
+          arg_asts
+        ->
           if List.length targ_lltypes <> 1 then
             raise (Error (fn_name ^ " expects exactly 1 type argument"));
           if List.length arg_vals <> 1 then
@@ -356,7 +409,14 @@ let get name =
             builder)
   | "realloc" ->
       Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
+        (fun context
+          the_module
+          builder
+          fn_name
+          arg_vals
+          targ_lltypes
+          arg_asts
+        ->
           if List.length targ_lltypes <> 1 then
             raise (Error "realloc expects exactly 1 type argument");
           if List.length arg_vals <> 2 then
@@ -388,6 +448,12 @@ let get name =
             "gc_realloc_tmp" builder)
   | "free" ->
       Some
-        (fun context the_module builder fn_name arg_vals targ_lltypes ->
-          const_null (void_type context))
+        (fun context
+          the_module
+          builder
+          fn_name
+          arg_vals
+          targ_lltypes
+          arg_asts
+        -> const_null (void_type context))
   | _ -> None

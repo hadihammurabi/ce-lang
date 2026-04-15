@@ -458,7 +458,9 @@ and codegen_expr = function
       | Some builtin_fn ->
           let arg_vals = List.map codegen_expr args in
           let targ_lltypes = List.map llvm_type_of targs in
+          let arg_asts = List.map infer_ast_type args in
           builtin_fn ce_ctx ce_module ce_builder name arg_vals targ_lltypes
+            arg_asts
       | None -> (
           let target_name =
             if targs = [] then name else instantiate_generic_fn name targs
