@@ -89,6 +89,9 @@ rule tokenize = parse
   | ";"                { expr_cont SEMICOLON }
   | "!"                { expr_cont BANG }
 
+  | "//" [^ '\n']*     { tokenize lexbuf }
+  | "/*"               { comment 0 lexbuf }
+
   | "=="               { expr_cont EQEQ }
   | "<="               { expr_cont LTE }
   | ">="               { expr_cont GTE }
@@ -109,3 +112,10 @@ and string_lit buf = parse
   | '\n'       { Lexing.new_line lexbuf; Buffer.add_char buf '\n'; string_lit buf lexbuf }
   | eof        { raise (Lexer_error ("Unterminated string", lexbuf.lex_curr_p)) }
   | _ as c     { Buffer.add_char buf c;    string_lit buf lexbuf }
+
+and comment level = parse
+  | "*/" { if level = 0 then tokenize lexbuf else comment (level - 1) lexbuf }
+  | "/*" { comment (level + 1) lexbuf }
+  | '\n' { Lexing.new_line lexbuf; comment level lexbuf }
+  | _    { comment level lexbuf }
+  | eof  { raise (Lexer_error ("Unterminated multi-line comment", lexbuf.lex_curr_p)) }
