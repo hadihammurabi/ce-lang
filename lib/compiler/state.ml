@@ -8,7 +8,7 @@ let type_aliases : (string, types) Hashtbl.t = Hashtbl.create 10
 let named_values : (string, llvalue * types * bool) Hashtbl.t =
   Hashtbl.create 10
 
-let function_types : (string, lltype) Hashtbl.t = Hashtbl.create 10
+let function_types : (string, lltype * types) Hashtbl.t = Hashtbl.create 10
 
 let struct_templates :
     (string, (string * types) list * struct_field list) Hashtbl.t =

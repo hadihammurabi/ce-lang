@@ -92,6 +92,9 @@ def_let:
   | LET name = IDENT ty = types                 { DefLet (name, false, ty, None) }
   | LET MUT name = IDENT ty = types             { DefLet (name, true, ty, None) }
 
+  | LET name = IDENT EQUALS e = expr            { DefLet (name, false, TUnknown, Some e) }
+  | LET MUT name = IDENT EQUALS e = expr        { DefLet (name, true, TUnknown, Some e) }
+
 type_scalar:
   | TYPE_VOID  { TVoid }
   | TYPE_STRING{ TString }

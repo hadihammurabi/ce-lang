@@ -143,6 +143,73 @@ and instantiate_generic_fn name targs =
     | None -> raise (Error ("Undefined generic function: " ^ name))
     end
 
+and infer_ast_type = function
+  | Int _ -> TInt
+  | Float _ -> TFloat
+  | Bool _ -> TBool
+  | String _ -> TString
+  | Char _ -> TChar
+  | Array (n, ty, _) -> TArray (n, ty)
+  | Struct (name, targs, _) ->
+      if targs = [] then TNamed name else TGenericInst (name, targs)
+  | Add (l, _) | Sub (l, _) | Mul (l, _) | Div (l, _) | Mod (l, _) ->
+      infer_ast_type l
+  | Eq _ | Lt _ | Lte _ | Gt _ | Gte _ | And _ | Or _ -> TBool
+  | Neg e -> infer_ast_type e
+  | Ref e -> TPointer (infer_ast_type e)
+  | Deref e -> ( match infer_ast_type e with TPointer t -> t | _ -> TUnknown)
+  | Let name ->
+      if not (String.contains name '.') then
+        try
+          let _, ty, _ = Hashtbl.find named_values name in
+          ty
+        with Not_found -> TUnknown
+      else TUnknown
+  | ArrayAccess (name, _) -> (
+      try
+        let _, ty, _ = Hashtbl.find named_values name in
+        match ty with TArray (_, t) -> t | _ -> TUnknown
+      with Not_found -> TUnknown)
+  | Call (name, targs, _) -> (
+      if Hashtbl.mem fn_templates name then
+        let tparams, _, ret_ty, _ = Hashtbl.find fn_templates name in
+        if List.length tparams = List.length targs then
+          let type_map =
+            List.map2 (fun (p_name, _) arg_ty -> (p_name, arg_ty)) tparams targs
+          in
+          substitute_type type_map ret_ty
+        else TUnknown
+      else if String.contains name '.' then
+        let last_dot = String.rindex name '.' in
+        let base_path = String.sub name 0 last_dot in
+        let method_name =
+          String.sub name (last_dot + 1) (String.length name - last_dot - 1)
+        in
+        try
+          let _, ast_ty, _ = Hashtbl.find named_values base_path in
+          let actual_ty = match ast_ty with TPointer t -> t | t -> t in
+          let s_name =
+            match actual_ty with
+            | TNamed n | TStruct n -> n
+            | TGenericInst (n, arg_types) ->
+                n ^ "_" ^ String.concat "_" (List.map show_types arg_types)
+            | _ -> raise Not_found
+          in
+          let mangled_name = s_name ^ "::" ^ method_name in
+          let _, ret_ty = Hashtbl.find function_types mangled_name in
+          ret_ty
+        with Not_found -> (
+          try
+            let _, ret_ty = Hashtbl.find function_types name in
+            ret_ty
+          with Not_found -> TUnknown)
+      else
+        try
+          let _, ret_ty = Hashtbl.find function_types name in
+          ret_ty
+        with Not_found -> TUnknown)
+  | _ -> TUnknown
+
 and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
   | Nil -> const_null (pointer_type ce_ctx)
@@ -340,7 +407,7 @@ and codegen_expr = function
           in
           match lookup_function name ce_module with
           | Some callee ->
-              let ft = Hashtbl.find function_types name in
+              let ft, _ = Hashtbl.find function_types name in
               let expected_tys = param_types ft in
               let arg_vals =
                 List.mapi
@@ -353,7 +420,7 @@ and codegen_expr = function
           | None -> (
               match lookup_function target_name ce_module with
               | Some callee ->
-                  let ft = Hashtbl.find function_types target_name in
+                  let ft, _ = Hashtbl.find function_types target_name in
                   let expected_tys = param_types ft in
                   let arg_vals =
                     List.mapi
@@ -389,7 +456,7 @@ and codegen_expr = function
                                  ("Unknown method '" ^ method_name
                                 ^ "' on struct '" ^ base_path ^ "'"))
                       in
-                      let ft = Hashtbl.find function_types mangled_name in
+                      let ft, _ = Hashtbl.find function_types mangled_name in
                       let expected_tys = param_types ft in
                       let arg_vals =
                         List.mapi
@@ -431,7 +498,9 @@ and codegen_expr = function
                                      ("Unknown method '" ^ method_name
                                     ^ "' on struct '" ^ clean_name ^ "'"))
                           in
-                          let ft = Hashtbl.find function_types mangled_name in
+                          let ft, _ =
+                            Hashtbl.find function_types mangled_name
+                          in
                           let expected_tys = param_types ft in
 
                           let expected_self_ty = expected_tys.(0) in
@@ -759,12 +828,35 @@ and codegen_stmt = function
       if is_result then ignore (coerce_value (struct_element_types ty).(1) v);
       const_null (void_type ce_ctx)
   | DefLet (name, ismut, ty, expr_opt) ->
-      let ll_ty = llvm_type_of ty in
-      let init_val =
+      let raw_val_opt, inferred_ty =
         match expr_opt with
         | Some expr ->
             let raw_val = codegen_expr expr in
-            coerce_value ll_ty raw_val
+            let deduced_ty =
+              if ty = TUnknown then
+                let inferred = infer_ast_type expr in
+                if inferred = TUnknown then
+                  raise
+                    (Error
+                       ("Cannot infer type for variable '" ^ name
+                      ^ "'. Please specify the type explicitly."))
+                else inferred
+              else ty
+            in
+            (Some raw_val, deduced_ty)
+        | None ->
+            if ty = TUnknown then
+              raise
+                (Error
+                   ("Cannot infer type for '" ^ name
+                  ^ "' without initialization"));
+            (None, ty)
+      in
+
+      let ll_ty = llvm_type_of inferred_ty in
+      let init_val =
+        match raw_val_opt with
+        | Some raw_val -> coerce_value ll_ty raw_val
         | None -> const_null ll_ty
       in
       let the_function = block_parent (insertion_block ce_builder) in
@@ -773,9 +865,9 @@ and codegen_stmt = function
       in
 
       let alloca = build_alloca ll_ty name ce_builder_alloca in
-      ignore (build_store init_val alloca ce_builder);
 
-      Hashtbl.add named_values name (alloca, ty, ismut);
+      ignore (build_store init_val alloca ce_builder);
+      Hashtbl.add named_values name (alloca, inferred_ty, ismut);
       alloca
   | DefType (name, underlying_ty) ->
       Hashtbl.add type_aliases name underlying_ty;
@@ -936,7 +1028,7 @@ and codegen_stmt = function
           Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
         in
         let ft = function_type (llvm_type_of ret_ty) param_types in
-        Hashtbl.add function_types actual_name ft;
+        Hashtbl.add function_types actual_name (ft, ret_ty);
 
         let f = declare_function actual_name ft ce_module in
         set_linkage Linkage.Internal f;
