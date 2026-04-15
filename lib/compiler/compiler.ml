@@ -7,7 +7,12 @@ open Substitue
 exception Error of string
 
 let rec llvm_type_of = function
-  | TInt -> i64_type ce_ctx
+  | TInt -> i32_type ce_ctx
+  | TI8 -> i8_type ce_ctx
+  | TI16 -> i16_type ce_ctx
+  | TI32 -> i32_type ce_ctx
+  | TI64 -> i64_type ce_ctx
+  | TI128 -> integer_type ce_ctx 128
   | TFloat -> double_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TVoid -> void_type ce_ctx

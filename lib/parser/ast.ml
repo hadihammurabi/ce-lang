@@ -14,6 +14,11 @@ type types =
   | TStruct of string
   | TResult of types
   | TInt
+  | TI8
+  | TI16
+  | TI32
+  | TI64
+  | TI128
   | TFloat
   | TUnknown
   | TGenericParam of string
@@ -22,7 +27,12 @@ type types =
 [@@deriving show]
 
 let rec t = function
-  | TInt -> i64_type ce_ctx
+  | TInt -> i32_type ce_ctx
+  | TI8 -> i8_type ce_ctx
+  | TI16 -> i16_type ce_ctx
+  | TI32 -> i32_type ce_ctx
+  | TI64 -> i64_type ce_ctx
+  | TI128 -> integer_type ce_ctx 128
   | TFloat -> double_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TString -> pointer_type ce_ctx

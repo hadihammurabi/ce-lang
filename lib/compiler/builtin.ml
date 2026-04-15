@@ -111,7 +111,13 @@ let get name =
           match classify_type ty with
           | TypeKind.Integer ->
               let bw = integer_bitwidth ty in
-              if bw = 1 then str_bool else if bw = 8 then str_char else str_int
+              if bw = 1 then str_bool
+              else if bw = 8 then str_char
+              else if bw = 16 then build_global_stringptr "i16" "s_i16" builder
+              else if bw = 32 then build_global_stringptr "i32" "s_i32" builder
+              else if bw = 128 then
+                build_global_stringptr "i128" "s_i128" builder
+              else str_int
           | TypeKind.Double -> str_float
           | TypeKind.Pointer -> str_str
           | TypeKind.Struct ->
@@ -201,10 +207,20 @@ let get name =
                   ignore
                     (build_call printf_ty printf_func [| fmt; v |] "p" builder)
                 end
-                else begin
+                else if bw <= 32 then begin
+                  let fmt = build_global_stringptr "%d" "fmt" builder in
+                  ignore
+                    (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                end
+                else if bw = 64 then begin
                   let fmt = build_global_stringptr "%ld" "fmt" builder in
                   ignore
                     (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                end
+                else begin
+                  let fmt = build_global_stringptr "<i128>" "fmt" builder in
+                  ignore
+                    (build_call printf_ty printf_func [| fmt |] "p" builder)
                 end
             | TypeKind.Double ->
                 let fmt = build_global_stringptr "%g" "fmt" builder in

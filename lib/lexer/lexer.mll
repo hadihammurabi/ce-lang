@@ -45,7 +45,6 @@ rule tokenize = parse
   | "true"             { expr_end TRUE }     
   | "false"            { expr_end FALSE }     
   | "string"           { expr_end TYPE_STRING }     
-  | "int"              { expr_end TYPE_INT }     
   | "float"            { expr_end TYPE_FLOAT }   
   | "char"             { expr_end TYPE_CHAR }
   | "void"             { expr_end TYPE_VOID }   
@@ -57,6 +56,12 @@ rule tokenize = parse
   | "struct"           { expr_cont STRUCT }
   | "trait"            { expr_cont TRAIT }
   | "nil"              { expr_end NIL }           
+  | "int"              { expr_end TYPE_I32 }     
+  | "i8"               { expr_end TYPE_I8 }
+  | "i16"              { expr_end TYPE_I16 }
+  | "i32"              { expr_end TYPE_I32 }
+  | "i64"              { expr_end TYPE_I64 }
+  | "i128"             { expr_end TYPE_I128 }
   | alpha alnum* { expr_end (IDENT (Lexing.lexeme lexbuf)) }
 
   | '"'                { 
