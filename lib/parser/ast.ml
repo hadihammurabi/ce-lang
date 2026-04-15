@@ -26,6 +26,8 @@ type types =
   | TU64
   | TU128
   | TFloat
+  | TF32
+  | TF64
   | TUnknown
   | TGenericParam of string
   | TGenericInst of string * types list
@@ -38,7 +40,8 @@ let rec t = function
   | TI16 | TU16 -> i16_type ce_ctx
   | TI64 | TU64 -> i64_type ce_ctx
   | TI128 | TU128 -> integer_type ce_ctx 128
-  | TFloat -> double_type ce_ctx
+  | TFloat | TF64 -> double_type ce_ctx
+  | TF32 -> float_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TString -> pointer_type ce_ctx
   | TChar -> i8_type ce_ctx

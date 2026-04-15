@@ -119,6 +119,7 @@ let get name =
                 build_global_stringptr "i128" "s_i128" builder
               else str_int
           | TypeKind.Double -> str_float
+          | TypeKind.Float -> build_global_stringptr "f32" "s_f32" builder
           | TypeKind.Pointer -> str_str
           | TypeKind.Struct ->
               let elems = struct_element_types ty in
@@ -226,9 +227,16 @@ let get name =
                        builder)
                 end
             | TypeKind.Double ->
-                let fmt = build_global_stringptr "%g" "fmt" builder in
+                let fmt = build_global_stringptr "%f" "fmt" builder in
                 ignore
                   (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+            | TypeKind.Float ->
+                let v_ext =
+                  build_fpext v (double_type context) "f32_to_f64" builder
+                in
+                let fmt = build_global_stringptr "%f" "fmt" builder in
+                ignore
+                  (build_call printf_ty printf_func [| fmt; v_ext |] "p" builder)
             | TypeKind.Pointer ->
                 let is_null = build_is_null v "is_null" builder in
                 let nil_str =

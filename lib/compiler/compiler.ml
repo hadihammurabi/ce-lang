@@ -12,7 +12,8 @@ let rec llvm_type_of = function
   | TI16 | TU16 -> i16_type ce_ctx
   | TI64 | TU64 -> i64_type ce_ctx
   | TI128 | TU128 -> integer_type ce_ctx 128
-  | TFloat -> double_type ce_ctx
+  | TFloat | TF64 -> double_type ce_ctx
+  | TF32 -> float_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TString -> pointer_type ce_ctx
@@ -810,6 +811,10 @@ and coerce_value expected_ll_ty raw_val is_unsigned_target =
     classify_type raw_ty = TypeKind.Integer
     && classify_type expected_ll_ty = TypeKind.Integer
   then build_intcast raw_val expected_ll_ty "int_coerce" ce_builder
+  else if raw_ty = double_type ce_ctx && expected_ll_ty = float_type ce_ctx then
+    build_fptrunc raw_val expected_ll_ty "float_trunc" ce_builder
+  else if raw_ty = float_type ce_ctx && expected_ll_ty = double_type ce_ctx then
+    build_fpext raw_val expected_ll_ty "float_ext" ce_builder
   else
     let is_result =
       match classify_type raw_ty with
@@ -880,16 +885,24 @@ and coerce_value expected_ll_ty raw_val is_unsigned_target =
       in
 
       if is_interface then begin
-        let malloc_val = build_malloc raw_ty "autobox_malloc" ce_builder in
-        ignore (build_store raw_val malloc_val ce_builder);
+        let actual_raw_val, actual_raw_ty =
+          if classify_type raw_ty = TypeKind.Float then
+            ( build_fpext raw_val (double_type ce_ctx) "box_fext" ce_builder,
+              double_type ce_ctx )
+          else (raw_val, raw_ty)
+        in
+        let malloc_val =
+          build_malloc actual_raw_ty "autobox_malloc" ce_builder
+        in
+        ignore (build_store actual_raw_val malloc_val ce_builder);
         let ptr_ty = pointer_type ce_ctx in
         let data_ptr =
           build_bitcast malloc_val ptr_ty "autobox_data" ce_builder
         in
         let type_tag =
-          match classify_type raw_ty with
+          match classify_type actual_raw_ty with
           | TypeKind.Integer ->
-              let bw = integer_bitwidth raw_ty in
+              let bw = integer_bitwidth actual_raw_ty in
               if bw = 1 then 3 else if bw = 8 then 5 else 1
           | TypeKind.Double -> 2
           | TypeKind.Pointer -> 4
