@@ -7,12 +7,11 @@ open Substitue
 exception Error of string
 
 let rec llvm_type_of = function
-  | TInt -> i32_type ce_ctx
-  | TI8 -> i8_type ce_ctx
-  | TI16 -> i16_type ce_ctx
-  | TI32 -> i32_type ce_ctx
-  | TI64 -> i64_type ce_ctx
-  | TI128 -> integer_type ce_ctx 128
+  | TInt | TUInt | TI32 | TU32 -> i32_type ce_ctx
+  | TI8 | TU8 -> i8_type ce_ctx
+  | TI16 | TU16 -> i16_type ce_ctx
+  | TI64 | TU64 -> i64_type ce_ctx
+  | TI128 | TU128 -> integer_type ce_ctx 128
   | TFloat -> double_type ce_ctx
   | TBool -> i1_type ce_ctx
   | TVoid -> void_type ce_ctx
@@ -374,28 +373,63 @@ and codegen_expr = function
       build_numeric_op lv rv build_mul build_fmul "multmp"
   | Div (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv build_sdiv build_fdiv "divtmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      build_numeric_op lv rv
+        (if is_unsigned then build_udiv else build_sdiv)
+        build_fdiv "divtmp"
   | Mod (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv build_srem build_frem "modtmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      build_numeric_op lv rv
+        (if is_unsigned then build_urem else build_srem)
+        build_frem "modtmp"
   | Eq (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       build_numeric_op lv rv (build_icmp Icmp.Eq) (build_fcmp Fcmp.Oeq) "eqtmp"
   | Lt (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv (build_icmp Icmp.Slt) (build_fcmp Fcmp.Olt) "lttmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      let op = if is_unsigned then Icmp.Ult else Icmp.Slt in
+      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Olt) "lttmp"
   | Lte (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv (build_icmp Icmp.Sle) (build_fcmp Fcmp.Ole)
-        "ltetmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      let op = if is_unsigned then Icmp.Ule else Icmp.Sle in
+      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Ole) "ltetmp"
   | Gt (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv (build_icmp Icmp.Sgt) (build_fcmp Fcmp.Ogt)
-        "ltetmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      let op = if is_unsigned then Icmp.Ugt else Icmp.Sgt in
+      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Ogt) "gttmp"
   | Gte (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      build_numeric_op lv rv (build_icmp Icmp.Sge) (build_fcmp Fcmp.Oge)
-        "ltetmp"
+      let is_unsigned =
+        match infer_ast_type l with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
+      let op = if is_unsigned then Icmp.Uge else Icmp.Sge in
+      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Oge) "gtetmp"
   | And (l, r) ->
       build_and (codegen_expr l) (codegen_expr r) "andtmp" ce_builder
   | Or (l, r) -> build_or (codegen_expr l) (codegen_expr r) "ortmp" ce_builder
@@ -420,7 +454,7 @@ and codegen_expr = function
               let arg_vals =
                 List.mapi
                   (fun i arg ->
-                    coerce_value expected_tys.(i) (codegen_expr arg))
+                    (coerce_value expected_tys.(i) (codegen_expr arg)) false)
                   args
               in
               let args_val = Array.of_list arg_vals in
@@ -436,7 +470,7 @@ and codegen_expr = function
                   let arg_vals =
                     List.mapi
                       (fun i arg ->
-                        coerce_value expected_tys.(i) (codegen_expr arg))
+                        (coerce_value expected_tys.(i) (codegen_expr arg)) false)
                       args
                   in
                   let args_val = Array.of_list arg_vals in
@@ -475,7 +509,8 @@ and codegen_expr = function
                       let arg_vals =
                         List.mapi
                           (fun i arg ->
-                            coerce_value expected_tys.(i) (codegen_expr arg))
+                            (coerce_value expected_tys.(i) (codegen_expr arg))
+                              false)
                           args
                       in
                       let args_val = Array.of_list arg_vals in
@@ -546,15 +581,15 @@ and codegen_expr = function
                             else if is_self_ptr then
                               build_load actual_struct_ty self_val "deref_self"
                                 ce_builder
-                            else coerce_value expected_self_ty self_val
+                            else coerce_value expected_self_ty self_val false
                           in
-
                           let arg_vals =
                             List.mapi
                               (fun i arg ->
-                                coerce_value
-                                  expected_tys.(i + 1)
-                                  (codegen_expr arg))
+                                (coerce_value
+                                   expected_tys.(i + 1)
+                                   (codegen_expr arg))
+                                  false)
                               args
                           in
                           let all_args =
@@ -664,7 +699,7 @@ and codegen_expr = function
           let fptr = build_struct_gep llty alloc fidx "fieldptr" ce_builder in
           let expected_ty = (struct_element_types llty).(fidx) in
           let raw_val = codegen_expr fexpr in
-          let val_to_store = coerce_value expected_ty raw_val in
+          let val_to_store = coerce_value expected_ty raw_val false in
           ignore (build_store val_to_store fptr ce_builder))
         fields;
 
@@ -725,8 +760,51 @@ and codegen_expr = function
           "catch_res" ce_builder
       else ok_val
 
-and coerce_value expected_ll_ty raw_val =
+and coerce_value expected_ll_ty raw_val is_unsigned_target =
   let raw_ty = type_of raw_val in
+
+  if is_unsigned_target && classify_type raw_ty = TypeKind.Integer then
+    begin match int64_of_const raw_val with
+    | Some v when v < 0L ->
+        raise (Error "Cannot assign negative value to unsigned type")
+    | Some _ -> ()
+    | None ->
+        let the_func = block_parent (insertion_block ce_builder) in
+        let ok_bb = append_block ce_ctx "uint_ok" the_func in
+        let err_bb = append_block ce_ctx "uint_err" the_func in
+        let zero = const_int raw_ty 0 in
+        let is_neg = build_icmp Icmp.Slt raw_val zero "is_neg" ce_builder in
+        ignore (build_cond_br is_neg err_bb ok_bb ce_builder);
+
+        position_at_end err_bb ce_builder;
+        let printf_ty =
+          var_arg_function_type (i32_type ce_ctx) [| pointer_type ce_ctx |]
+        in
+        let printf_fn =
+          match lookup_function "printf" ce_module with
+          | Some f -> f
+          | None -> declare_function "printf" printf_ty ce_module
+        in
+        let err_fmt =
+          build_global_stringptr
+            "Runtime Error: Cannot assign negative value to unsigned type\n"
+            "err_fmt" ce_builder
+        in
+        ignore (build_call printf_ty printf_fn [| err_fmt |] "p" ce_builder);
+        let exit_ty = function_type (void_type ce_ctx) [| i32_type ce_ctx |] in
+        let exit_fn =
+          match lookup_function "exit" ce_module with
+          | Some f -> f
+          | None -> declare_function "exit" exit_ty ce_module
+        in
+        ignore
+          (build_call exit_ty exit_fn
+             [| const_int (i32_type ce_ctx) 1 |]
+             "" ce_builder);
+        ignore (build_unreachable ce_builder);
+
+        position_at_end ok_bb ce_builder
+    end;
   if raw_ty = expected_ll_ty then raw_val
   else if
     classify_type raw_ty = TypeKind.Integer
@@ -782,7 +860,7 @@ and coerce_value expected_ll_ty raw_val =
 
       position_at_end ok_bb ce_builder;
       let ok_val = build_extractvalue raw_val 1 "ok_val" ce_builder in
-      let final_val = coerce_value expected_ll_ty ok_val in
+      let final_val = coerce_value expected_ll_ty ok_val false in
       let final_ok_bb = insertion_block ce_builder in
       ignore (build_br merge_bb ce_builder);
 
@@ -850,7 +928,8 @@ and codegen_stmt = function
             && elems.(2) = pointer_type ce_ctx
         | _ -> false
       in
-      if is_result then ignore (coerce_value (struct_element_types ty).(1) v);
+      if is_result then
+        ignore (coerce_value (struct_element_types ty).(1) v false);
       const_null (void_type ce_ctx)
   | DefLet (name, ismut, ty, expr_opt) ->
       let raw_val_opt, inferred_ty =
@@ -879,9 +958,14 @@ and codegen_stmt = function
       in
 
       let ll_ty = llvm_type_of inferred_ty in
+      let is_unsigned =
+        match inferred_ty with
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | _ -> false
+      in
       let init_val =
         match raw_val_opt with
-        | Some raw_val -> coerce_value ll_ty raw_val
+        | Some raw_val -> coerce_value ll_ty raw_val is_unsigned
         | None -> const_null ll_ty
       in
       let the_function = block_parent (insertion_block ce_builder) in
@@ -917,7 +1001,7 @@ and codegen_stmt = function
       end
   | Assign (name, expr) ->
       let val_ = codegen_expr expr in
-      let var_ptr, expected_ll_ty =
+      let var_ptr, expected_ll_ty, is_unsigned =
         if String.contains name '.' then
           let parts = String.split_on_char '.' name in
           let base_name = List.hd parts in
@@ -978,7 +1062,8 @@ and codegen_stmt = function
           in
 
           ( get_gep base_ptr base_struct_llty (List.tl parts),
-            get_ty base_struct_llty (List.tl parts) )
+            get_ty base_struct_llty (List.tl parts),
+            false )
         else
           let v, ast_ty, ismut =
             try Hashtbl.find named_values name
@@ -987,9 +1072,15 @@ and codegen_stmt = function
           in
           if not ismut then
             raise (Error ("Cannot assign to immutable variable '" ^ name ^ "'"));
-          (v, llvm_type_of ast_ty)
+
+          let is_u =
+            match ast_ty with
+            | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+            | _ -> false
+          in
+          (v, llvm_type_of ast_ty, is_u)
       in
-      let val_to_store = coerce_value expected_ll_ty val_ in
+      let val_to_store = coerce_value expected_ll_ty val_ is_unsigned in
       ignore (build_store val_ var_ptr ce_builder);
       val_to_store
   | ArrayAssign (name, index_expr, val_expr) ->

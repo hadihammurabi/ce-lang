@@ -11,6 +11,7 @@
 %token          EOF RETURN IMPORT BREAK NEWLINE TYPE IMPL RAISE CATCH STRUCT TRAIT
 %token          TYPE_BOOL TYPE_VOID TYPE_STRING TYPE_CHAR TYPE_FLOAT
 %token          TYPE_INT TYPE_I8 TYPE_I16 TYPE_I32 TYPE_I64 TYPE_I128
+%token          TYPE_UINT TYPE_U8 TYPE_U16 TYPE_U32 TYPE_U64 TYPE_U128
 %token          LET MUT TRUE FALSE FN IF ELSE FOR NIL
 
 %left OR AND
@@ -101,12 +102,8 @@ type_scalar:
   | TYPE_STRING{ TString }
   | TYPE_CHAR  { TChar }
   | TYPE_BOOL  { TBool }
-  | TYPE_INT   { TI32 }
-  | TYPE_I8    { TI8 }
-  | TYPE_I16   { TI16 }
-  | TYPE_I32   { TI32 }
-  | TYPE_I64   { TI64 }
-  | TYPE_I128  { TI128 }
+  | TYPE_INT   { TI32 } | TYPE_I8 { TI8 } | TYPE_I16 { TI16 } | TYPE_I32 { TI32 } | TYPE_I64 { TI64 } | TYPE_I128 { TI128 }
+  | TYPE_UINT  { TUInt } | TYPE_U8 { TU8 } | TYPE_U16 { TU16 } | TYPE_U32 { TU32 } | TYPE_U64 { TU64 } | TYPE_U128 { TU128 }
   | TYPE_FLOAT { TFloat }
   | id = path { TNamed id }
 

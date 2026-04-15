@@ -62,6 +62,12 @@ rule tokenize = parse
   | "i32"              { expr_end TYPE_I32 }
   | "i64"              { expr_end TYPE_I64 }
   | "i128"             { expr_end TYPE_I128 }
+  | "uint"             { expr_end TYPE_UINT }
+  | "u8"               { expr_end TYPE_U8 }
+  | "u16"              { expr_end TYPE_U16 }
+  | "u32"              { expr_end TYPE_U32 }
+  | "u64"              { expr_end TYPE_U64 }
+  | "u128"             { expr_end TYPE_U128 }
   | alpha alnum* { expr_end (IDENT (Lexing.lexeme lexbuf)) }
 
   | '"'                { 
