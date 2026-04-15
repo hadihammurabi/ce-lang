@@ -202,15 +202,14 @@ let get name =
                   ignore
                     (build_call printf_ty printf_func [| fmt; s |] "p" builder)
                 end
-                else if bw = 8 then begin
-                  let fmt = build_global_stringptr "%c" "fmt" builder in
-                  ignore
-                    (build_call printf_ty printf_func [| fmt; v |] "p" builder)
-                end
                 else if bw <= 32 then begin
+                  let v_i32 =
+                    build_intcast v (i32_type context) "cast_i32" builder
+                  in
                   let fmt = build_global_stringptr "%d" "fmt" builder in
                   ignore
-                    (build_call printf_ty printf_func [| fmt; v |] "p" builder)
+                    (build_call printf_ty printf_func [| fmt; v_i32 |] "p"
+                       builder)
                 end
                 else if bw = 64 then begin
                   let fmt = build_global_stringptr "%ld" "fmt" builder in
@@ -218,9 +217,13 @@ let get name =
                     (build_call printf_ty printf_func [| fmt; v |] "p" builder)
                 end
                 else begin
-                  let fmt = build_global_stringptr "<i128>" "fmt" builder in
+                  let v_i64 =
+                    build_intcast v (i64_type context) "cast_i128" builder
+                  in
+                  let fmt = build_global_stringptr "%ld" "fmt" builder in
                   ignore
-                    (build_call printf_ty printf_func [| fmt |] "p" builder)
+                    (build_call printf_ty printf_func [| fmt; v_i64 |] "p"
+                       builder)
                 end
             | TypeKind.Double ->
                 let fmt = build_global_stringptr "%g" "fmt" builder in
@@ -328,9 +331,12 @@ let get name =
 
           let elem_ty = List.hd targ_lltypes in
           let count_val = List.hd arg_vals in
+          let count_i64 =
+            build_intcast count_val (i64_type context) "count_i64" builder
+          in
           let size_val = size_of elem_ty in
+          let total_size = build_mul count_i64 size_val "alloc_size" builder in
 
-          let total_size = build_mul count_val size_val "alloc_size" builder in
           let ptr_ty = pointer_type context in
           let gc_malloc_ty = function_type ptr_ty [| i64_type context |] in
           let gc_malloc_fn =
@@ -350,13 +356,17 @@ let get name =
 
           let elem_ty = List.hd targ_lltypes in
           let ptr_val = List.hd arg_vals in
+          let ptr_ty = pointer_type context in
+
           let count_val = List.nth arg_vals 1 in
+          let count_i64 =
+            build_intcast count_val (i64_type context) "count_i64" builder
+          in
           let size_val = size_of elem_ty in
           let total_size =
-            build_mul count_val size_val "realloc_size" builder
+            build_mul count_i64 size_val "realloc_size" builder
           in
 
-          let ptr_ty = pointer_type context in
           let gc_realloc_ty =
             function_type ptr_ty [| ptr_ty; i64_type context |]
           in

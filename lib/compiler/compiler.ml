@@ -218,7 +218,7 @@ and infer_ast_type = function
 and codegen_expr = function
   | Void -> const_null (void_type ce_ctx)
   | Nil -> const_null (pointer_type ce_ctx)
-  | Int n -> const_int (i64_type ce_ctx) n
+  | Int n -> const_int (i32_type ce_ctx) n
   | Float f -> const_float (double_type ce_ctx) f
   | Bool b -> const_int (i1_type ce_ctx) (if b then 1 else 0)
   | Char c -> const_int (i8_type ce_ctx) (Char.code c)
@@ -352,18 +352,21 @@ and codegen_expr = function
       let lv, rv = (codegen_expr l, codegen_expr r) in
       if classify_type (type_of lv) = TypeKind.Pointer then
         let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
-        let added = build_add ptr_int rv "addptr" ce_builder in
+        let rv_i64 = build_intcast rv (i64_type ce_ctx) "rv_i64" ce_builder in
+        let added = build_add ptr_int rv_i64 "addptr" ce_builder in
         build_inttoptr added (type_of lv) "itp" ce_builder
       else if classify_type (type_of rv) = TypeKind.Pointer then
         let ptr_int = build_ptrtoint rv (i64_type ce_ctx) "pti" ce_builder in
-        let added = build_add ptr_int lv "addptr" ce_builder in
+        let lv_i64 = build_intcast lv (i64_type ce_ctx) "lv_i64" ce_builder in
+        let added = build_add ptr_int lv_i64 "addptr" ce_builder in
         build_inttoptr added (type_of rv) "itp" ce_builder
       else build_numeric_op lv rv build_add build_fadd "addtmp"
   | Sub (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       if classify_type (type_of lv) = TypeKind.Pointer then
         let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
-        let subbed = build_sub ptr_int rv "subptr" ce_builder in
+        let rv_i64 = build_intcast rv (i64_type ce_ctx) "rv_i64" ce_builder in
+        let subbed = build_sub ptr_int rv_i64 "subptr" ce_builder in
         build_inttoptr subbed (type_of lv) "itp" ce_builder
       else build_numeric_op lv rv build_sub build_fsub "subtmp"
   | Mul (l, r) ->
@@ -421,7 +424,9 @@ and codegen_expr = function
                   args
               in
               let args_val = Array.of_list arg_vals in
-              let call_name = if return_type ft = void_type ce_ctx then "" else "calltmp" in
+              let call_name =
+                if return_type ft = void_type ce_ctx then "" else "calltmp"
+              in
               build_call ft callee args_val call_name ce_builder
           | None -> (
               match lookup_function target_name ce_module with
@@ -435,7 +440,9 @@ and codegen_expr = function
                       args
                   in
                   let args_val = Array.of_list arg_vals in
-                  let call_name = if return_type ft = void_type ce_ctx then "" else "calltmp" in
+                  let call_name =
+                    if return_type ft = void_type ce_ctx then "" else "calltmp"
+                  in
                   build_call ft callee args_val call_name ce_builder
               | None ->
                   if Hashtbl.mem fn_templates name then
@@ -472,7 +479,10 @@ and codegen_expr = function
                           args
                       in
                       let args_val = Array.of_list arg_vals in
-                      let call_name = if return_type ft = void_type ce_ctx then "" else "staticcalltmp" in
+                      let call_name =
+                        if return_type ft = void_type ce_ctx then ""
+                        else "staticcalltmp"
+                      in
                       build_call ft callee args_val call_name ce_builder
                     else
                       let self_val =
@@ -547,8 +557,13 @@ and codegen_expr = function
                                   (codegen_expr arg))
                               args
                           in
-                          let all_args = Array.of_list (coerced_self :: arg_vals) in
-                          let call_name = if return_type ft = void_type ce_ctx then "" else "methodcalltmp" in
+                          let all_args =
+                            Array.of_list (coerced_self :: arg_vals)
+                          in
+                          let call_name =
+                            if return_type ft = void_type ce_ctx then ""
+                            else "methodcalltmp"
+                          in
                           build_call ft callee all_args call_name ce_builder
                       | None ->
                           raise
@@ -713,6 +728,10 @@ and codegen_expr = function
 and coerce_value expected_ll_ty raw_val =
   let raw_ty = type_of raw_val in
   if raw_ty = expected_ll_ty then raw_val
+  else if
+    classify_type raw_ty = TypeKind.Integer
+    && classify_type expected_ll_ty = TypeKind.Integer
+  then build_intcast raw_val expected_ll_ty "int_coerce" ce_builder
   else
     let is_result =
       match classify_type raw_ty with
@@ -1053,10 +1072,11 @@ and codegen_stmt = function
             Hashtbl.add named_values n (alloca, p_ty, false))
           (Llvm.params f);
 
-        List.iter (fun s -> 
-          if Option.is_none (block_terminator (insertion_block ce_builder)) then
-            ignore (codegen_stmt s)
-        ) body;
+        List.iter
+          (fun s ->
+            if Option.is_none (block_terminator (insertion_block ce_builder))
+            then ignore (codegen_stmt s))
+          body;
 
         let current_bb = insertion_block ce_builder in
         (match block_terminator current_bb with
@@ -1089,7 +1109,7 @@ and codegen_stmt = function
           let c_builder = builder_at_end ce_ctx c_bb in
 
           let call_name = if ret_ty = TVoid then "" else "main_call" in
-          let call_res = build_call ft f [||]call_name c_builder in
+          let call_res = build_call ft f [||] call_name c_builder in
 
           if match ret_ty with TResult _ -> true | _ -> false then begin
             let is_err = build_extractvalue call_res 0 "is_err" c_builder in
@@ -1121,10 +1141,11 @@ and codegen_stmt = function
         f
       end
   | Block stmts ->
-      List.iter (fun s -> 
-        if Option.is_none (block_terminator (insertion_block ce_builder)) then
-          ignore (codegen_stmt s)
-      ) stmts;
+      List.iter
+        (fun s ->
+          if Option.is_none (block_terminator (insertion_block ce_builder)) then
+            ignore (codegen_stmt s))
+        stmts;
       const_null (void_type ce_ctx)
   | For stmts ->
       let the_function = block_parent (insertion_block ce_builder) in
@@ -1135,10 +1156,11 @@ and codegen_stmt = function
       position_at_end loop_bb ce_builder;
 
       Stack.push after_bb loop_exit_blocks;
-      List.iter (fun s -> 
-        if Option.is_none (block_terminator (insertion_block ce_builder)) then
-          ignore (codegen_stmt s)
-      ) stmts;
+      List.iter
+        (fun s ->
+          if Option.is_none (block_terminator (insertion_block ce_builder)) then
+            ignore (codegen_stmt s))
+        stmts;
       if Option.is_none (block_terminator (insertion_block ce_builder)) then
         ignore (build_br loop_bb ce_builder);
       ignore (Stack.pop loop_exit_blocks);
