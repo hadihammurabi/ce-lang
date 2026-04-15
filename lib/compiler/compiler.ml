@@ -178,7 +178,7 @@ and infer_ast_type = function
       with Not_found -> TUnknown)
   | Call (name, targs, _) -> (
       if String.ends_with ~suffix:".as" name && List.length targs = 1 then
-        TResult (List.hd targs)
+        List.hd targs
       else if Hashtbl.mem fn_templates name then
         let tparams, _, ret_ty, _ = Hashtbl.find fn_templates name in
         if List.length tparams = List.length targs then
