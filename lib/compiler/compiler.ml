@@ -434,7 +434,8 @@ and codegen_expr = function
                       args
                   in
                   let args_val = Array.of_list arg_vals in
-                  build_call ft callee args_val "calltmp" ce_builder
+                  let call_name = if return_type ft = void_type ce_ctx then "" else "calltmp" in
+                  build_call ft callee args_val call_name ce_builder
               | None ->
                   if Hashtbl.mem fn_templates name then
                     raise
@@ -470,7 +471,8 @@ and codegen_expr = function
                           args
                       in
                       let args_val = Array.of_list arg_vals in
-                      build_call ft callee args_val "staticcalltmp" ce_builder
+                      let call_name = if return_type ft = void_type ce_ctx then "" else "staticcalltmp" in
+                      build_call ft callee args_val call_name ce_builder
                     else
                       let self_val =
                         try codegen_expr (Let base_path)
@@ -544,11 +546,9 @@ and codegen_expr = function
                                   (codegen_expr arg))
                               args
                           in
-                          let all_args =
-                            Array.of_list (coerced_self :: arg_vals)
-                          in
-                          build_call ft callee all_args "methodcalltmp"
-                            ce_builder
+                          let all_args = Array.of_list (coerced_self :: arg_vals) in
+                          let call_name = if return_type ft = void_type ce_ctx then "" else "methodcalltmp" in
+                          build_call ft callee all_args call_name ce_builder
                       | None ->
                           raise
                             (Error
@@ -757,7 +757,7 @@ and coerce_value expected_ll_ty raw_val =
       ignore
         (build_call exit_ty exit_fn
            [| const_int (i32_type ce_ctx) 1 |]
-           "exit_call" ce_builder);
+           "" ce_builder);
       ignore (build_unreachable ce_builder);
 
       position_at_end ok_bb ce_builder;
@@ -1084,7 +1084,8 @@ and codegen_stmt = function
           let c_bb = append_block ce_ctx "entry" c_main_f in
           let c_builder = builder_at_end ce_ctx c_bb in
 
-          let call_res = build_call ft f [||] "main_call" c_builder in
+          let call_name = if ret_ty = TVoid then "" else "main_call" in
+          let call_res = build_call ft f [||]call_name c_builder in
 
           if match ret_ty with TResult _ -> true | _ -> false then begin
             let is_err = build_extractvalue call_res 0 "is_err" c_builder in

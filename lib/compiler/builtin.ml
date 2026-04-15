@@ -252,7 +252,7 @@ let get name =
                   ignore
                     (build_call
                        (function_type (void_type context) [| ty |])
-                       print_any_f [| v |] "p" builder)
+                       print_any_f [| v |] "" builder)
                 end
                 else if
                   Array.length elems = 3
