@@ -198,6 +198,21 @@ and infer_ast_type = function
             | TNamed n | TStruct n -> n
             | TGenericInst (n, arg_types) ->
                 n ^ "_" ^ String.concat "_" (List.map show_types arg_types)
+            | TInt | TI32 -> "int"
+            | TFloat | TF64 -> "float"
+            | TString -> "string"
+            | TBool -> "bool"
+            | TChar -> "char"
+            | TI8 -> "i8"
+            | TI16 -> "i16"
+            | TI64 -> "i64"
+            | TI128 -> "i128"
+            | TUInt | TU32 -> "uint"
+            | TU8 -> "u8"
+            | TU16 -> "u16"
+            | TU64 -> "u64"
+            | TU128 -> "u128"
+            | TF32 -> "f32"
             | _ -> raise Not_found
           in
           let mangled_name = s_name ^ "::" ^ method_name in
@@ -535,77 +550,99 @@ and codegen_expr = function
                         else (self_ty_llvm, false)
                       in
 
-                      match struct_name actual_struct_ty with
-                      | Some s_name ->
-                          let clean_name =
-                            if String.starts_with ~prefix:"struct." s_name then
-                              String.sub s_name 7 (String.length s_name - 7)
-                            else s_name
-                          in
-                          let mangled_name = clean_name ^ "::" ^ method_name in
-                          let callee =
-                            match lookup_function mangled_name ce_module with
-                            | Some c -> c
+                      let self_ast_ty = infer_ast_type (Let base_path) in
+                      let actual_ast_ty =
+                        match self_ast_ty with TPointer t -> t | t -> t
+                      in
+
+                      let clean_name =
+                        match actual_ast_ty with
+                        | TNamed n | TStruct n -> n
+                        | TInt | TI32 -> "int"
+                        | TFloat | TF64 -> "float"
+                        | TString -> "string"
+                        | TBool -> "bool"
+                        | TChar -> "char"
+                        | TI8 -> "i8"
+                        | TI16 -> "i16"
+                        | TI64 -> "i64"
+                        | TI128 -> "i128"
+                        | TUInt | TU32 -> "uint"
+                        | TU8 -> "u8"
+                        | TU16 -> "u16"
+                        | TU64 -> "u64"
+                        | TU128 -> "u128"
+                        | TF32 -> "f32"
+                        | TGenericInst (n, arg_types) ->
+                            n ^ "_"
+                            ^ String.concat "_" (List.map show_types arg_types)
+                        | _ -> (
+                            match struct_name actual_struct_ty with
+                            | Some s_name ->
+                                if String.starts_with ~prefix:"struct." s_name
+                                then
+                                  String.sub s_name 7 (String.length s_name - 7)
+                                else s_name
                             | None ->
                                 raise
                                   (Error
-                                     ("Unknown method '" ^ method_name
-                                    ^ "' on struct '" ^ clean_name ^ "'"))
-                          in
-                          let ft, _ =
-                            Hashtbl.find function_types mangled_name
-                          in
-                          let expected_tys = param_types ft in
+                                     ("Cannot call method '" ^ method_name
+                                    ^ "' on a non-struct type")))
+                      in
 
-                          let expected_self_ty = expected_tys.(0) in
-                          let coerced_self =
-                            if classify_type expected_self_ty = TypeKind.Pointer
-                            then
-                              if is_self_ptr then self_val
-                              else
-                                let get_ptr_to_name path =
-                                  if String.contains path '.' then
-                                    let parts = String.split_on_char '.' path in
-                                    let base_name = List.hd parts in
-                                    let v, ast_ty, _ =
-                                      Hashtbl.find named_values base_name
-                                    in
-                                    resolve_property_ptr v (llvm_type_of ast_ty)
-                                      (List.tl parts)
-                                  else
-                                    let v, _, _ =
-                                      Hashtbl.find named_values path
-                                    in
-                                    v
+                      let mangled_name = clean_name ^ "::" ^ method_name in
+                      let callee =
+                        match lookup_function mangled_name ce_module with
+                        | Some c -> c
+                        | None ->
+                            raise
+                              (Error
+                                 ("Unknown method '" ^ method_name
+                                ^ "' on type '" ^ clean_name ^ "'"))
+                      in
+                      let ft, _ = Hashtbl.find function_types mangled_name in
+                      let expected_tys = param_types ft in
+
+                      let expected_self_ty = expected_tys.(0) in
+                      let coerced_self =
+                        if classify_type expected_self_ty = TypeKind.Pointer
+                        then
+                          if is_self_ptr then self_val
+                          else
+                            let get_ptr_to_name path =
+                              if String.contains path '.' then
+                                let parts = String.split_on_char '.' path in
+                                let base_name = List.hd parts in
+                                let v, ast_ty, _ =
+                                  Hashtbl.find named_values base_name
                                 in
-                                get_ptr_to_name base_path
-                            else if is_self_ptr then
-                              build_load actual_struct_ty self_val "deref_self"
-                                ce_builder
-                            else coerce_value expected_self_ty self_val false
-                          in
-                          let arg_vals =
-                            List.mapi
-                              (fun i arg ->
-                                (coerce_value
-                                   expected_tys.(i + 1)
-                                   (codegen_expr arg))
-                                  false)
-                              args
-                          in
-                          let all_args =
-                            Array.of_list (coerced_self :: arg_vals)
-                          in
-                          let call_name =
-                            if return_type ft = void_type ce_ctx then ""
-                            else "methodcalltmp"
-                          in
-                          build_call ft callee all_args call_name ce_builder
-                      | None ->
-                          raise
-                            (Error
-                               ("Cannot call method '" ^ method_name
-                              ^ "' on a non-struct type"))
+                                resolve_property_ptr v (llvm_type_of ast_ty)
+                                  (List.tl parts)
+                              else
+                                let v, _, _ = Hashtbl.find named_values path in
+                                v
+                            in
+                            get_ptr_to_name base_path
+                        else if is_self_ptr then
+                          build_load actual_struct_ty self_val "deref_self"
+                            ce_builder
+                        else coerce_value expected_self_ty self_val false
+                      in
+                      let arg_vals =
+                        List.mapi
+                          (fun i arg ->
+                            (coerce_value
+                               expected_tys.(i + 1)
+                               (codegen_expr arg))
+                              false)
+                          args
+                      in
+                      let all_args = Array.of_list (coerced_self :: arg_vals) in
+                      let call_name =
+                        if return_type ft = void_type ce_ctx then ""
+                        else "methodcalltmp"
+                      in
+                      build_call ft callee all_args call_name ce_builder
                   else raise (Error ("Unknown function: " ^ name)))))
   | Array (n, ty, elems) ->
       let elem_ty = llvm_type_of ty in
@@ -1307,7 +1344,25 @@ and codegen_stmt = function
         List.iter
           (fun (method_name, self_id, is_ptr, m_params, ret_ty, body) ->
             let mangled_name = name ^ "::" ^ method_name in
-            let base_ty = TNamed name in
+            let base_ty =
+              match name with
+              | "int" -> TI32
+              | "float" -> TF64
+              | "uint" -> TU32
+              | "string" -> TString
+              | "bool" -> TBool
+              | "char" -> TChar
+              | "i8" -> TI8
+              | "i16" -> TI16
+              | "i64" -> TI64
+              | "i128" -> TI128
+              | "u8" -> TU8
+              | "u16" -> TU16
+              | "u64" -> TU64
+              | "u128" -> TU128
+              | "f32" -> TF32
+              | _ -> TNamed name
+            in
 
             let self_ty = if is_ptr then TPointer base_ty else base_ty in
             let self_param = { param_name = self_id; ty = self_ty } in

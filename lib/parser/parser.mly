@@ -48,7 +48,7 @@ global_stmt:
   | def_struct      { $1 }
   | def_trait   { $1 }
   | IMPORT path = module_path { Import path }
-  | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
+  | IMPL struct_name = impl_target params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
 
 stmt:
@@ -65,9 +65,9 @@ stmt:
   | block           { Block $1 }
   | expr            { Expr $1 }
   | FOR body = block { For body }
-  | IMPL struct_name = IDENT params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
-      { Impl (struct_name, params, methods) }
   | RAISE e = expr  { Raise e }
+  | IMPL struct_name = impl_target params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
+      { Impl (struct_name, params, methods) }
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -173,7 +173,7 @@ impl_method_list:
   |  { [] }
   | m = impl_method sep_opt rest = impl_method_list { m :: rest }
 
-  impl_method:
+impl_method:
   | FN name = IDENT LPAREN self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
     { (name, self_id, false, [], ret_ty, body) }
   | FN name = IDENT LPAREN AMP self_id = IDENT RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
@@ -182,6 +182,18 @@ impl_method_list:
     { (name, self_id, false, params, ret_ty, body) }
   | FN name = IDENT LPAREN AMP self_id = IDENT COMMA params = separated_list(COMMA, param) RPAREN ret_ty = types LBRACE sep_opt body = stmt_list RBRACE
     { (name, self_id, true, params, ret_ty, body) }
+
+impl_target:
+  | id = IDENT { id }
+  | TYPE_INT | TYPE_I32 { "int" }
+  | TYPE_FLOAT | TYPE_F64 { "float" }
+  | TYPE_UINT | TYPE_U32 { "uint" }
+  | TYPE_STRING { "string" }
+  | TYPE_BOOL { "bool" }
+  | TYPE_CHAR { "char" }
+  | TYPE_I8 { "i8" } | TYPE_I16 { "i16" } | TYPE_I64 { "i64" } | TYPE_I128 { "i128" }
+  | TYPE_U8 { "u8" } | TYPE_U16 { "u16" } | TYPE_U64 { "u64" } | TYPE_U128 { "u128" }
+  | TYPE_F32 { "f32" }
 
 def_trait:
   | TRAIT name = IDENT LBRACE sep_opt RBRACE 
