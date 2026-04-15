@@ -421,7 +421,8 @@ and codegen_expr = function
                   args
               in
               let args_val = Array.of_list arg_vals in
-              build_call ft callee args_val "calltmp" ce_builder
+              let call_name = if return_type ft = void_type ce_ctx then "" else "calltmp" in
+              build_call ft callee args_val call_name ce_builder
           | None -> (
               match lookup_function target_name ce_module with
               | Some callee ->
@@ -1052,7 +1053,10 @@ and codegen_stmt = function
             Hashtbl.add named_values n (alloca, p_ty, false))
           (Llvm.params f);
 
-        List.iter (fun s -> ignore (codegen_stmt s)) body;
+        List.iter (fun s -> 
+          if Option.is_none (block_terminator (insertion_block ce_builder)) then
+            ignore (codegen_stmt s)
+        ) body;
 
         let current_bb = insertion_block ce_builder in
         (match block_terminator current_bb with
@@ -1117,7 +1121,10 @@ and codegen_stmt = function
         f
       end
   | Block stmts ->
-      List.iter (fun s -> ignore (codegen_stmt s)) stmts;
+      List.iter (fun s -> 
+        if Option.is_none (block_terminator (insertion_block ce_builder)) then
+          ignore (codegen_stmt s)
+      ) stmts;
       const_null (void_type ce_ctx)
   | For stmts ->
       let the_function = block_parent (insertion_block ce_builder) in
@@ -1128,8 +1135,12 @@ and codegen_stmt = function
       position_at_end loop_bb ce_builder;
 
       Stack.push after_bb loop_exit_blocks;
-      List.iter (fun s -> ignore (codegen_stmt s)) stmts;
-      ignore (build_br loop_bb ce_builder);
+      List.iter (fun s -> 
+        if Option.is_none (block_terminator (insertion_block ce_builder)) then
+          ignore (codegen_stmt s)
+      ) stmts;
+      if Option.is_none (block_terminator (insertion_block ce_builder)) then
+        ignore (build_br loop_bb ce_builder);
       ignore (Stack.pop loop_exit_blocks);
 
       position_at_end after_bb ce_builder;
