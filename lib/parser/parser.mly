@@ -64,7 +64,8 @@ stmt:
   | BREAK           { Break }
   | block           { Block $1 }
   | expr            { Expr $1 }
-  | FOR body = block { For body }
+  | FOR body = block { For (None, body) }
+  | FOR cond = expr_no_struct body = block { For (Some cond, body) }
   | RAISE e = expr  { Raise e }
   | IMPL struct_name = impl_target params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }

@@ -101,7 +101,7 @@ and stmt =
   | DerefAssign of expr * expr
   | Return of expr
   | Block of stmt list
-  | For of stmt list
+  | For of expr option * stmt list
   | Break
   | Import of string list
   | Raise of expr

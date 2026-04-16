@@ -1419,24 +1419,33 @@ and codegen_stmt = function
             ignore (codegen_stmt s))
         stmts;
       const_null (void_type ce_ctx)
-  | For stmts ->
+  | For (cond, stmts) ->
       let the_function = block_parent (insertion_block ce_builder) in
       let loop_bb = append_block ce_ctx "loop" the_function in
+      let cond_bb = append_block ce_ctx "loop_cond" the_function in
       let after_bb = append_block ce_ctx "afterloop" the_function in
 
-      ignore (build_br loop_bb ce_builder);
-      position_at_end loop_bb ce_builder;
+      ignore (build_br cond_bb ce_builder);
+      position_at_end cond_bb ce_builder;
+      (match cond with
+      | Some c ->
+          let cond_val = codegen_expr c in
+          ignore (build_cond_br cond_val loop_bb after_bb ce_builder)
+      | None -> ignore (build_br loop_bb ce_builder));
 
+      position_at_end loop_bb ce_builder;
       Stack.push after_bb loop_exit_blocks;
+
       List.iter
         (fun s ->
           if Option.is_none (block_terminator (insertion_block ce_builder)) then
             ignore (codegen_stmt s))
         stmts;
-      if Option.is_none (block_terminator (insertion_block ce_builder)) then
-        ignore (build_br loop_bb ce_builder);
-      ignore (Stack.pop loop_exit_blocks);
 
+      if Option.is_none (block_terminator (insertion_block ce_builder)) then
+        ignore (build_br cond_bb ce_builder);
+
+      ignore (Stack.pop loop_exit_blocks);
       position_at_end after_bb ce_builder;
       const_null (void_type ce_ctx)
   | Break ->
