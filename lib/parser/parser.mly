@@ -118,7 +118,8 @@ types:
   | name = path LT arg_ty = types GT { TGenericInst (name, [arg_ty]) }
   | BANG ty = types                       { TResult ty }
   | LPAREN t = types COMMA rest = separated_nonempty_list(COMMA, types) RPAREN { TTuple (t :: rest) }
-  | FN LPAREN arg_tys = separated_list(COMMA, types) RPAREN ret_ty = types { TFn(arg_tys, ret_ty) }
+  | FN LPAREN RPAREN ret_ty = types { TFn([], ret_ty) }
+  | FN LPAREN arg_tys = separated_nonempty_list(COMMA, types) RPAREN ret_ty = types { TFn(arg_tys, ret_ty) }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -258,8 +259,8 @@ expr_simple:
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
     { Catch(e, id, ty, body) }
   | LPAREN e = expr COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
-  | LPAREN e = expr COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
-  | FN LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }
+  | FN LPAREN RPAREN ty = types body = block { AnonFN([], ty, body) }
+  | FN LPAREN params = separated_nonempty_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }
 
 expr:
   | e = expr_simple               { e }
@@ -297,7 +298,8 @@ expr_simple_no_struct:
   | e = expr_no_struct LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
     { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
   | LPAREN e = expr_no_struct COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
-  | FN LPAREN params = separated_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }
+  | FN LPAREN RPAREN ty = types body = block { AnonFN([], ty, body) }
+  | FN LPAREN params = separated_nonempty_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }
 
 expr_no_struct:
   | e = expr_simple_no_struct                     { e }

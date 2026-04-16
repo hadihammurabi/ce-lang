@@ -1229,7 +1229,7 @@ and codegen_stmt = function
                     (Error
                        ("Cannot infer type for variable '" ^ name
                       ^ "'. Please specify the type explicitly."))
-                else inferred
+                else match inferred with TResult t -> t | _ -> inferred
               else ty
             in
             (Some raw_val, deduced_ty)
