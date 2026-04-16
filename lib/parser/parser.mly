@@ -59,7 +59,7 @@ stmt:
   | def_trait   { $1 }
   | name = path EQUALS e = expr { Assign (name, e) }
   | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr { ArrayAssign (name, idx, e) }
-  | STAR name = path EQUALS e = expr { DerefAssign (Let name, e) }
+  | STAR ptr = expr_simple EQUALS e = expr { DerefAssign (ptr, e) }
   | RETURN expr     { Return $2 }
   | BREAK           { Break }
   | block           { Block $1 }
@@ -232,12 +232,12 @@ expr_simple:
   | name = path LBRACE sep_opt fields = struct_init_list RBRACE   { Struct (name, [], fields) }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
 
-  | id = path LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN 
-    { Call(id, targs, args) }
-  | name = path LT targs = separated_list(COMMA, types) GT LBRACE sep_opt RBRACE
-    { Struct (name, targs, []) }
-  | name = path LT targs = separated_list(COMMA, types) GT LBRACE sep_opt fields = struct_init_list RBRACE
-    { Struct (name, targs, fields) }
+  | e = expr LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
+    { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
+  | e = expr LT targs = separated_list(COMMA, types) GT LBRACE sep_opt RBRACE
+    { match e with Let name -> Struct (name, targs, []) | _ -> raise (Failure "Invalid generic struct instantiation") }
+  | e = expr LT targs = separated_list(COMMA, types) GT LBRACE sep_opt fields = struct_init_list RBRACE
+    { match e with Let name -> Struct (name, targs, fields) | _ -> raise (Failure "Invalid generic struct instantiation") }
 
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
     { Catch(e, id, ty, body) }
@@ -274,8 +274,8 @@ expr_simple_no_struct:
   | STAR e = expr_simple_no_struct                                { Deref e }
   | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
-  | id = path LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN 
-    { Call(id, targs, args) }
+  | e = expr_no_struct LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
+    { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
 
 expr_no_struct:
   | e = expr_simple_no_struct                     { e }

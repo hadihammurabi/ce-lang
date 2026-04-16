@@ -163,7 +163,11 @@ and infer_ast_type = function
   | Eq _ | Lt _ | Lte _ | Gt _ | Gte _ | And _ | Or _ -> TBool
   | Neg e -> infer_ast_type e
   | Ref e -> TPointer (infer_ast_type e)
-  | Deref e -> ( match infer_ast_type e with TPointer t -> t | _ -> TUnknown)
+  | Deref e -> (
+      match infer_ast_type e with
+      | TPointer t -> t
+      | TString -> TChar
+      | _ -> TUnknown)
   | Let name ->
       if not (String.contains name '.') then
         try
@@ -345,27 +349,16 @@ and codegen_expr = function
       with Not_found ->
         raise (Error ("Cannot reference unknown variable: '" ^ name ^ "'")))
   | Ref _ -> raise (Error "Can only reference variables (e.g., &a)")
-  | Deref (Let name) ->
-      if String.contains name '.' then
-        raise
-          (Error
-             ("Cannot use explicit dereference on struct fields directly. Try \
-               just `" ^ name ^ "` as property accesses auto-dereference."));
-      let ptr_to_ptr, ast_ty, _ =
-        try Hashtbl.find named_values name
-        with Not_found ->
-          raise (Error ("Cannot dereference unknown variable: '" ^ name ^ "'"))
-      in
+  | Deref e ->
+      let ptr_val = codegen_expr e in
+      let ptr_ast_ty = infer_ast_type e in
       let inner_ty =
-        match ast_ty with
+        match ptr_ast_ty with
         | TPointer t -> t
-        | _ -> raise (Error ("Variable '" ^ name ^ "' is not a pointer"))
+        | TString -> TChar
+        | _ -> raise (Error "Cannot dereference non-pointer expression")
       in
-      let actual_ptr =
-        build_load (llvm_type_of ast_ty) ptr_to_ptr "ptrload" ce_builder
-      in
-      build_load (llvm_type_of inner_ty) actual_ptr "dereftmp" ce_builder
-  | Deref _ -> raise (Error "Complex pointer math not yet supported")
+      build_load (llvm_type_of inner_ty) ptr_val "dereftmp" ce_builder
   | Add (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       if classify_type (type_of lv) = TypeKind.Pointer then
@@ -417,7 +410,7 @@ and codegen_expr = function
       let lv, rv = (codegen_expr l, codegen_expr r) in
       let is_unsigned =
         match infer_ast_type l with
-        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 | TChar -> true
         | _ -> false
       in
       let op = if is_unsigned then Icmp.Ult else Icmp.Slt in
@@ -426,7 +419,7 @@ and codegen_expr = function
       let lv, rv = (codegen_expr l, codegen_expr r) in
       let is_unsigned =
         match infer_ast_type l with
-        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 | TChar -> true
         | _ -> false
       in
       let op = if is_unsigned then Icmp.Ule else Icmp.Sle in
@@ -435,7 +428,7 @@ and codegen_expr = function
       let lv, rv = (codegen_expr l, codegen_expr r) in
       let is_unsigned =
         match infer_ast_type l with
-        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 | TChar -> true
         | _ -> false
       in
       let op = if is_unsigned then Icmp.Ugt else Icmp.Sgt in
@@ -444,7 +437,7 @@ and codegen_expr = function
       let lv, rv = (codegen_expr l, codegen_expr r) in
       let is_unsigned =
         match infer_ast_type l with
-        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+        | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 | TChar -> true
         | _ -> false
       in
       let op = if is_unsigned then Icmp.Uge else Icmp.Sge in
@@ -1299,9 +1292,8 @@ and codegen_stmt = function
       if String.contains name '.' then
         raise
           (Error
-             ("Cannot use explicit dereference assignment on struct fields \
-               directly. Try just `" ^ name
-            ^ " = ...` as property accesses auto-dereference."));
+             "Cannot use explicit dereference assignment on struct fields \
+              directly...");
       let ptr_to_ptr, ast_ty, _ = Hashtbl.find named_values name in
       let _ =
         match ast_ty with
