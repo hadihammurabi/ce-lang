@@ -162,66 +162,81 @@ let get name =
               | TFn _ ->
                   build_global_stringptr (type_to_string ast_ty) "s_fn" builder
               | _ -> str_str)
-          | TypeKind.Struct ->
-              let elems = struct_element_types ty in
-              if
-                Array.length elems = 2
-                && elems.(0) = pointer_type context
-                && elems.(1) = pointer_type context
-              then begin
-                let tag_ptr = build_extractvalue arg_val 1 "tag_ptr" builder in
-                let tag_val =
-                  build_ptrtoint tag_ptr (i64_type context) "tag_val" builder
-                in
-
-                let is_1 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 1)
-                    "is_1" builder
-                in
-                let is_2 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 2)
-                    "is_2" builder
-                in
-                let is_3 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 3)
-                    "is_3" builder
-                in
-                let is_4 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 4)
-                    "is_4" builder
-                in
-                let is_5 =
-                  build_icmp Icmp.Eq tag_val
-                    (const_int (i64_type context) 5)
-                    "is_5" builder
-                in
-
-                let res_5 = build_select is_5 str_char str_unk "res5" builder in
-                let res_4 = build_select is_4 str_str res_5 "res4" builder in
-                let res_3 = build_select is_3 str_bool res_4 "res3" builder in
-                let res_2 = build_select is_2 str_float res_3 "res2" builder in
-                build_select is_1 str_int res_2 "res_final" builder
-              end
-              else
-                begin match struct_name ty with
-                | Some s_name ->
-                    let clean_name =
-                      if String.starts_with ~prefix:"struct." s_name then
-                        String.sub s_name 7 (String.length s_name - 7)
-                      else s_name
+          | TypeKind.Struct -> (
+              match ast_ty with
+              | TFn _ ->
+                  build_global_stringptr (type_to_string ast_ty) "s_fn" builder
+              | _ ->
+                  let elems = struct_element_types ty in
+                  if
+                    Array.length elems = 2
+                    && elems.(0) = pointer_type context
+                    && elems.(1) = pointer_type context
+                  then begin
+                    let tag_ptr =
+                      build_extractvalue arg_val 1 "tag_ptr" builder
                     in
-                    build_global_stringptr clean_name "s_struct" builder
-                | None -> (
-                    match ast_ty with
-                    | TTuple _ ->
-                        build_global_stringptr (type_to_string ast_ty) "s_tuple"
-                          builder
-                    | _ -> str_unk)
-                end
+                    let tag_val =
+                      build_ptrtoint tag_ptr (i64_type context) "tag_val"
+                        builder
+                    in
+
+                    let is_1 =
+                      build_icmp Icmp.Eq tag_val
+                        (const_int (i64_type context) 1)
+                        "is_1" builder
+                    in
+                    let is_2 =
+                      build_icmp Icmp.Eq tag_val
+                        (const_int (i64_type context) 2)
+                        "is_2" builder
+                    in
+                    let is_3 =
+                      build_icmp Icmp.Eq tag_val
+                        (const_int (i64_type context) 3)
+                        "is_3" builder
+                    in
+                    let is_4 =
+                      build_icmp Icmp.Eq tag_val
+                        (const_int (i64_type context) 4)
+                        "is_4" builder
+                    in
+                    let is_5 =
+                      build_icmp Icmp.Eq tag_val
+                        (const_int (i64_type context) 5)
+                        "is_5" builder
+                    in
+
+                    let res_5 =
+                      build_select is_5 str_char str_unk "res5" builder
+                    in
+                    let res_4 =
+                      build_select is_4 str_str res_5 "res4" builder
+                    in
+                    let res_3 =
+                      build_select is_3 str_bool res_4 "res3" builder
+                    in
+                    let res_2 =
+                      build_select is_2 str_float res_3 "res2" builder
+                    in
+                    build_select is_1 str_int res_2 "res_final" builder
+                  end
+                  else
+                    begin match struct_name ty with
+                    | Some s_name ->
+                        let clean_name =
+                          if String.starts_with ~prefix:"struct." s_name then
+                            String.sub s_name 7 (String.length s_name - 7)
+                          else s_name
+                        in
+                        build_global_stringptr clean_name "s_struct" builder
+                    | None -> (
+                        match ast_ty with
+                        | TTuple _ ->
+                            build_global_stringptr (type_to_string ast_ty)
+                              "s_tuple" builder
+                        | _ -> str_unk)
+                    end)
           | _ -> str_unk)
   | "println" | "print" | "printf" ->
       Some
@@ -325,64 +340,6 @@ let get name =
                     ignore
                       (build_call printf_ty printf_func [| fmt; print_val |] "p"
                          builder))
-            | TypeKind.Struct ->
-                let elems = struct_element_types ty in
-                if
-                  Array.length elems = 2
-                  && elems.(0) = pointer_type context
-                  && elems.(1) = pointer_type context
-                then begin
-                  let print_any_f = get_print_any context the_module builder in
-                  ignore
-                    (build_call
-                       (function_type (void_type context) [| ty |])
-                       print_any_f [| v |] "" builder)
-                end
-                else if
-                  Array.length elems = 3
-                  && elems.(0) = i1_type context
-                  && elems.(2) = pointer_type context
-                then begin
-                  let is_err = build_extractvalue v 0 "is_err" builder in
-
-                  let the_func = block_parent (insertion_block builder) in
-                  let err_bb = append_block context "res_err" the_func in
-                  let ok_bb = append_block context "res_ok" the_func in
-                  let merge_bb = append_block context "res_merge" the_func in
-
-                  ignore (build_cond_br is_err err_bb ok_bb builder);
-
-                  position_at_end err_bb builder;
-                  let err_msg = build_extractvalue v 2 "err_msg" builder in
-                  let err_fmt =
-                    build_global_stringptr "Error: %s" "err_fmt" builder
-                  in
-                  ignore
-                    (build_call printf_ty printf_func [| err_fmt; err_msg |] "p"
-                       builder);
-                  ignore (build_br merge_bb builder);
-
-                  position_at_end ok_bb builder;
-                  let ok_val = build_extractvalue v 1 "ok_val" builder in
-                  let ok_ast_ty =
-                    match ast_ty with TResult t -> t | _ -> TUnknown
-                  in
-                  print_arg ok_val ok_ast_ty;
-
-                  ignore (build_br merge_bb builder);
-
-                  position_at_end merge_bb builder
-                end
-                else begin
-                  print_str "{";
-                  let len = Array.length elems in
-                  for i = 0 to len - 1 do
-                    let elem = build_extractvalue v i "ext" builder in
-                    print_arg elem TUnknown;
-                    if i < len - 1 then print_str ", "
-                  done;
-                  print_str "}"
-                end
             | TypeKind.Array ->
                 print_str "[";
                 let len = array_length ty in
@@ -395,6 +352,78 @@ let get name =
                   if i < len - 1 then print_str ", "
                 done;
                 print_str "]"
+            | TypeKind.Struct -> (
+                match ast_ty with
+                | TFn _ ->
+                    let fn_str =
+                      build_global_stringptr "<fn>" "fn_str" builder
+                    in
+                    let fmt = build_global_stringptr "%s" "fmt" builder in
+                    ignore
+                      (build_call printf_ty printf_func [| fmt; fn_str |] "p"
+                         builder)
+                | _ ->
+                    let elems = struct_element_types ty in
+                    if
+                      Array.length elems = 2
+                      && elems.(0) = pointer_type context
+                      && elems.(1) = pointer_type context
+                    then begin
+                      let print_any_f =
+                        get_print_any context the_module builder
+                      in
+                      ignore
+                        (build_call
+                           (function_type (void_type context) [| ty |])
+                           print_any_f [| v |] "" builder)
+                    end
+                    else if
+                      Array.length elems = 3
+                      && elems.(0) = i1_type context
+                      && elems.(2) = pointer_type context
+                    then begin
+                      let is_err = build_extractvalue v 0 "is_err" builder in
+
+                      let the_func = block_parent (insertion_block builder) in
+                      let err_bb = append_block context "res_err" the_func in
+                      let ok_bb = append_block context "res_ok" the_func in
+                      let merge_bb =
+                        append_block context "res_merge" the_func
+                      in
+
+                      ignore (build_cond_br is_err err_bb ok_bb builder);
+
+                      position_at_end err_bb builder;
+                      let err_msg = build_extractvalue v 2 "err_msg" builder in
+                      let err_fmt =
+                        build_global_stringptr "Error: %s" "err_fmt" builder
+                      in
+                      ignore
+                        (build_call printf_ty printf_func [| err_fmt; err_msg |]
+                           "p" builder);
+                      ignore (build_br merge_bb builder);
+
+                      position_at_end ok_bb builder;
+                      let ok_val = build_extractvalue v 1 "ok_val" builder in
+                      let ok_ast_ty =
+                        match ast_ty with TResult t -> t | _ -> TUnknown
+                      in
+                      print_arg ok_val ok_ast_ty;
+
+                      ignore (build_br merge_bb builder);
+
+                      position_at_end merge_bb builder
+                    end
+                    else begin
+                      print_str "{";
+                      let len = Array.length elems in
+                      for i = 0 to len - 1 do
+                        let elem = build_extractvalue v i "ext" builder in
+                        print_arg elem TUnknown;
+                        if i < len - 1 then print_str ", "
+                      done;
+                      print_str "}"
+                    end)
             | _ -> print_str "(complex_type)"
           in
 

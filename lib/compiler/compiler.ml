@@ -114,7 +114,7 @@ let rec llvm_type_of = function
 
           fst (Hashtbl.find struct_registry mangled_name))
   | TTuple ts -> struct_type ce_ctx (Array.of_list (List.map llvm_type_of ts))
-  | TFn _ -> pointer_type ce_ctx
+  | TFn _ -> struct_type ce_ctx [| pointer_type ce_ctx; pointer_type ce_ctx |]
 
 and instantiate_generic_fn name targs =
   let mangled_name =
@@ -628,6 +628,12 @@ and codegen_expr = function
                           let ft =
                             function_type (llvm_type_of ret_ty) expected_tys
                           in
+                          let fn_ptr_raw =
+                            build_extractvalue fn_val 0 "fn_ptr_raw" ce_builder
+                          in
+                          let env_ptr =
+                            build_extractvalue fn_val 1 "env_ptr" ce_builder
+                          in
                           let arg_vals =
                             List.mapi
                               (fun i arg ->
@@ -636,11 +642,11 @@ and codegen_expr = function
                                   false false)
                               args
                           in
+                          let all_args = Array.of_list (env_ptr :: arg_vals) in
                           let call_name =
                             if ret_ty = TVoid then "" else "fnptr_calltmp"
                           in
-                          build_call ft fn_val (Array.of_list arg_vals)
-                            call_name ce_builder
+                          build_call ft fn_ptr_raw all_args call_name ce_builder
                       | _ -> raise (Error "Unreachable")
                     else if Hashtbl.mem fn_templates name then
                       raise
@@ -967,31 +973,43 @@ and codegen_expr = function
       let merge_bb = append_block ce_ctx "catch_expr_merge" the_func in
 
       ignore (build_cond_br is_err err_bb ok_bb ce_builder);
-
       position_at_end err_bb ce_builder;
-      let err_str = build_extractvalue res_val 2 "err_str" ce_builder in
 
+      let err_str = build_extractvalue res_val 2 "err_str" ce_builder in
       let handler_val = codegen_expr handler in
-      let handler_ft =
+
+      let catch_val_raw =
         match handler with
         | Let name
           when Hashtbl.mem function_types name
                && not (Hashtbl.mem named_values name) ->
-            fst (Hashtbl.find function_types name)
+            let ft, _ = Hashtbl.find function_types name in
+            let call_name =
+              if expected_ll_ty = void_type ce_ctx then "" else "catch_call_tmp"
+            in
+            build_call ft handler_val [| err_str |] call_name ce_builder
         | _ -> (
             let handler_ast_ty = infer_ast_type handler in
             match handler_ast_ty with
             | TFn (param_tys, ret_ty) ->
-                function_type (llvm_type_of ret_ty)
-                  (Array.of_list (List.map llvm_type_of param_tys))
+                let env_ptr =
+                  build_extractvalue handler_val 1 "env_ptr" ce_builder
+                in
+                let fn_ptr_raw =
+                  build_extractvalue handler_val 0 "fn_ptr_raw" ce_builder
+                in
+                let expected_tys =
+                  Array.of_list
+                    (pointer_type ce_ctx :: List.map llvm_type_of param_tys)
+                in
+                let ft = function_type (llvm_type_of ret_ty) expected_tys in
+                let call_name =
+                  if expected_ll_ty = void_type ce_ctx then ""
+                  else "catch_call_tmp"
+                in
+                build_call ft fn_ptr_raw [| env_ptr; err_str |] call_name
+                  ce_builder
             | _ -> raise (Error "Catch handler must be a function"))
-      in
-
-      let call_name =
-        if expected_ll_ty = void_type ce_ctx then "" else "catch_call_tmp"
-      in
-      let catch_val_raw =
-        build_call handler_ft handler_val [| err_str |] call_name ce_builder
       in
 
       let catch_val =
@@ -1038,26 +1056,88 @@ and codegen_expr = function
       (current_fn_is_res := match ret_ty with TResult _ -> true | _ -> false);
       current_fn_ret_ty := llvm_type_of ret_ty;
 
+      let live_vars =
+        Hashtbl.fold
+          (fun k (v, ty, is_mut) acc -> (k, v, ty, is_mut) :: acc)
+          named_values []
+      in
+      let env_types =
+        Array.of_list
+          (List.map (fun (_, _, ty, _) -> llvm_type_of ty) live_vars)
+      in
+      let env_struct_ty = struct_type ce_ctx env_types in
+
+      let env_size = size_of env_struct_ty in
+      let gc_malloc_ty =
+        function_type (pointer_type ce_ctx) [| i64_type ce_ctx |]
+      in
+      let gc_malloc_fn =
+        match lookup_function "GC_malloc" ce_module with
+        | Some f -> f
+        | None -> declare_function "GC_malloc" gc_malloc_ty ce_module
+      in
+      let env_ptr_raw =
+        build_call gc_malloc_ty gc_malloc_fn [| env_size |] "env_alloc"
+          ce_builder
+      in
+      let env_ptr =
+        build_bitcast env_ptr_raw (pointer_type ce_ctx) "env_ptr" ce_builder
+      in
+
+      List.iteri
+        (fun i (_, v, ty, _) ->
+          let val_ty = llvm_type_of ty in
+          let gep =
+            build_struct_gep env_struct_ty env_ptr i "env_gep" ce_builder
+          in
+          let loaded_val = build_load val_ty v "capture_load" ce_builder in
+          ignore (build_store loaded_val gep ce_builder))
+        live_vars;
+
       let param_types =
-        Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
+        Array.of_list
+          (pointer_type ce_ctx
+          :: List.map (fun (p : param) -> llvm_type_of p.ty) params)
       in
       let ft = function_type (llvm_type_of ret_ty) param_types in
       Hashtbl.add function_types actual_name (ft, ret_ty);
-
       let f = declare_function actual_name ft ce_module in
       set_linkage Linkage.Internal f;
       let bb = append_block ce_ctx "entry" f in
       position_at_end bb ce_builder;
 
       let old_named_values = Hashtbl.copy named_values in
+      Hashtbl.clear named_values;
+
+      let inner_env_ptr_raw = param f 0 in
+      let inner_env_ptr =
+        build_bitcast inner_env_ptr_raw (pointer_type ce_ctx) "inner_env"
+          ce_builder
+      in
+
+      List.iteri
+        (fun i (k, _, ty, is_mut) ->
+          let val_ty = llvm_type_of ty in
+          let gep =
+            build_struct_gep env_struct_ty inner_env_ptr i "env_gep" ce_builder
+          in
+          let loaded_val = build_load val_ty gep "env_load" ce_builder in
+          let local_alloca = build_alloca val_ty k ce_builder in
+          ignore (build_store loaded_val local_alloca ce_builder);
+          Hashtbl.add named_values k (local_alloca, ty, is_mut))
+        live_vars;
+
       Array.iteri
         (fun i a ->
-          let n = (List.nth params i).param_name in
-          let p_ty = (List.nth params i).ty in
-          let llvm_p_ty = llvm_type_of p_ty in
-          let alloca = build_alloca llvm_p_ty n ce_builder in
-          ignore (build_store a alloca ce_builder);
-          Hashtbl.add named_values n (alloca, p_ty, false))
+          if i > 0 then begin
+            let real_i = i - 1 in
+            let n = (List.nth params real_i).param_name in
+            let p_ty = (List.nth params real_i).ty in
+            let llvm_p_ty = llvm_type_of p_ty in
+            let alloca = build_alloca llvm_p_ty n ce_builder in
+            ignore (build_store a alloca ce_builder);
+            Hashtbl.add named_values n (alloca, p_ty, false)
+          end)
         (Llvm.params f);
 
       List.iter
@@ -1089,7 +1169,16 @@ and codegen_expr = function
       current_fn_ret_ty := was_ret_ty;
       position_at_end old_bb ce_builder;
 
-      f
+      let closure_struct_ty =
+        struct_type ce_ctx [| pointer_type ce_ctx; pointer_type ce_ctx |]
+      in
+      let closure_val0 =
+        build_insertvalue
+          (const_null closure_struct_ty)
+          (build_bitcast f (pointer_type ce_ctx) "fn_cast" ce_builder)
+          0 "closure0" ce_builder
+      in
+      build_insertvalue closure_val0 env_ptr 1 "closure" ce_builder
 
 and coerce_value expected_ll_ty raw_val is_unsigned_target is_unsigned_source =
   let raw_ty = type_of raw_val in
