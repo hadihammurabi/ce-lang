@@ -368,23 +368,14 @@ and codegen_expr = function
   | Add (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       if classify_type (type_of lv) = TypeKind.Pointer then
-        let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
-        let rv_i64 = build_intcast rv (i64_type ce_ctx) "rv_i64" ce_builder in
-        let added = build_add ptr_int rv_i64 "addptr" ce_builder in
-        build_inttoptr added (type_of lv) "itp" ce_builder
+        build_ptr_arith lv rv build_add "addptr"
       else if classify_type (type_of rv) = TypeKind.Pointer then
-        let ptr_int = build_ptrtoint rv (i64_type ce_ctx) "pti" ce_builder in
-        let lv_i64 = build_intcast lv (i64_type ce_ctx) "lv_i64" ce_builder in
-        let added = build_add ptr_int lv_i64 "addptr" ce_builder in
-        build_inttoptr added (type_of rv) "itp" ce_builder
+        build_ptr_arith rv lv build_add "addptr"
       else build_numeric_op lv rv build_add build_fadd "addtmp"
   | Sub (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
       if classify_type (type_of lv) = TypeKind.Pointer then
-        let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
-        let rv_i64 = build_intcast rv (i64_type ce_ctx) "rv_i64" ce_builder in
-        let subbed = build_sub ptr_int rv_i64 "subptr" ce_builder in
-        build_inttoptr subbed (type_of lv) "itp" ce_builder
+        build_ptr_arith lv rv build_sub "subptr"
       else build_numeric_op lv rv build_sub build_fsub "subtmp"
   | Mul (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
@@ -404,20 +395,28 @@ and codegen_expr = function
       build_numeric_op lv rv (build_icmp Icmp.Eq) (build_fcmp Fcmp.Oeq) "eqtmp"
   | Lt (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      let op = if is_unsigned (infer_ast_type l) then Icmp.Ult else Icmp.Slt in
-      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Olt) "lttmp"
+      build_numeric_op lv rv
+        (build_icmp
+           (if is_unsigned (infer_ast_type l) then Icmp.Ult else Icmp.Slt))
+        (build_fcmp Fcmp.Olt) "lttmp"
   | Lte (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      let op = if is_unsigned (infer_ast_type l) then Icmp.Ule else Icmp.Sle in
-      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Ole) "ltetmp"
+      build_numeric_op lv rv
+        (build_icmp
+           (if is_unsigned (infer_ast_type l) then Icmp.Ule else Icmp.Sle))
+        (build_fcmp Fcmp.Ole) "ltetmp"
   | Gt (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      let op = if is_unsigned (infer_ast_type l) then Icmp.Ugt else Icmp.Sgt in
-      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Ogt) "gttmp"
+      build_numeric_op lv rv
+        (build_icmp
+           (if is_unsigned (infer_ast_type l) then Icmp.Ugt else Icmp.Sgt))
+        (build_fcmp Fcmp.Ogt) "gttmp"
   | Gte (l, r) ->
       let lv, rv = (codegen_expr l, codegen_expr r) in
-      let op = if is_unsigned (infer_ast_type l) then Icmp.Uge else Icmp.Sge in
-      build_numeric_op lv rv (build_icmp op) (build_fcmp Fcmp.Oge) "gtetmp"
+      build_numeric_op lv rv
+        (build_icmp
+           (if is_unsigned (infer_ast_type l) then Icmp.Uge else Icmp.Sge))
+        (build_fcmp Fcmp.Oge) "gtetmp"
   | And (l, r) ->
       build_and (codegen_expr l) (codegen_expr r) "andtmp" ce_builder
   | Or (l, r) -> build_or (codegen_expr l) (codegen_expr r) "ortmp" ce_builder
@@ -778,19 +777,18 @@ and codegen_expr = function
                         build_call ft callee all_args call_name ce_builder
                     else raise (Error ("Unknown function: " ^ name)))))
   | Array (n, ty, elems) ->
-      let elem_ty = llvm_type_of ty in
-      let arr_ty = array_type elem_ty n in
-      let arr_alloc = build_alloca arr_ty "arrtmp" ce_builder in
+      let arr_ty = array_type (llvm_type_of ty) n in
+      let alloc = build_alloca arr_ty "arrtmp" ce_builder in
       List.iteri
         (fun i e ->
-          let e_val = codegen_expr e in
-          let idx =
-            [| const_int (i32_type ce_ctx) 0; const_int (i32_type ce_ctx) i |]
+          let ptr =
+            build_gep arr_ty alloc
+              [| const_int (i32_type ce_ctx) 0; const_int (i32_type ce_ctx) i |]
+              "elemtmp" ce_builder
           in
-          let ptr = build_gep arr_ty arr_alloc idx "elemtmp" ce_builder in
-          ignore (build_store e_val ptr ce_builder))
+          ignore (build_store (codegen_expr e) ptr ce_builder))
         elems;
-      build_load arr_ty arr_alloc "arrload" ce_builder
+      build_load arr_ty alloc "arrload" ce_builder
   | If (cond, then_body, elif_branches, else_body) ->
       let the_function = block_parent (insertion_block ce_builder) in
       let merge_bb = append_block ce_ctx "ifcont" the_function in
@@ -1012,9 +1010,10 @@ and codegen_expr = function
       let alloc = build_alloca struct_ty "tupletmp" ce_builder in
       List.iteri
         (fun i e ->
-          let e_val = codegen_expr e in
-          let ptr = build_struct_gep struct_ty alloc i "tupleelem" ce_builder in
-          ignore (build_store e_val ptr ce_builder))
+          ignore
+            (build_store (codegen_expr e)
+               (build_struct_gep struct_ty alloc i "tupleelem" ce_builder)
+               ce_builder))
         elems;
       build_load struct_ty alloc "tupleload" ce_builder
   | AnonFN (params, ret_ty, body) ->
@@ -1112,11 +1111,7 @@ and codegen_expr = function
           end)
         (Llvm.params f);
 
-      List.iter
-        (fun s ->
-          if Option.is_none (block_terminator (insertion_block ce_builder)) then
-            ignore (codegen_stmt s))
-        body;
+      codegen_block body;
 
       let current_bb = insertion_block ce_builder in
       (match block_terminator current_bb with
@@ -1331,6 +1326,13 @@ and coerce_value expected_ll_ty raw_val is_unsigned_target is_unsigned_source =
         build_bitcast raw_val expected_ll_ty "ptr_cast" ce_builder
       end
       else raw_val
+
+and codegen_block stmts =
+  List.iter
+    (fun s ->
+      if Option.is_none (block_terminator (insertion_block ce_builder)) then
+        ignore (codegen_stmt s))
+    stmts
 
 and codegen_stmt = function
   | Expr e ->
@@ -1571,11 +1573,7 @@ and codegen_stmt = function
             Hashtbl.add named_values n (alloca, p_ty, false))
           (Llvm.params f);
 
-        List.iter
-          (fun s ->
-            if Option.is_none (block_terminator (insertion_block ce_builder))
-            then ignore (codegen_stmt s))
-          body;
+        codegen_block body;
 
         let current_bb = insertion_block ce_builder in
         (match block_terminator current_bb with
@@ -1640,11 +1638,7 @@ and codegen_stmt = function
         f
       end
   | Block stmts ->
-      List.iter
-        (fun s ->
-          if Option.is_none (block_terminator (insertion_block ce_builder)) then
-            ignore (codegen_stmt s))
-        stmts;
+      codegen_block stmts;
       const_null (void_type ce_ctx)
   | For (init, cond, mut, stmts) ->
       let init_var_name =
@@ -1670,11 +1664,7 @@ and codegen_stmt = function
       position_at_end loop_bb ce_builder;
       Stack.push after_bb loop_exit_blocks;
 
-      List.iter
-        (fun s ->
-          if Option.is_none (block_terminator (insertion_block ce_builder)) then
-            ignore (codegen_stmt s))
-        stmts;
+      codegen_block stmts;
 
       if Option.is_none (block_terminator (insertion_block ce_builder)) then
         ignore (build_br mut_bb ce_builder);

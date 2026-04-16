@@ -66,3 +66,10 @@ and ast_base_type_name = function
   | TU128 -> "u128"
   | TF32 -> "f32"
   | _ -> raise Not_found
+
+and build_ptr_arith lv rv op name =
+  let ptr_int = build_ptrtoint lv (i64_type ce_ctx) "pti" ce_builder in
+  let rv_i64 = build_intcast rv (i64_type ce_ctx) "rv_i64" ce_builder in
+  build_inttoptr
+    (op ptr_int rv_i64 name ce_builder)
+    (type_of lv) "itp" ce_builder
