@@ -204,28 +204,7 @@ and infer_ast_type = function
         try
           let _, ast_ty, _ = Hashtbl.find named_values base_path in
           let actual_ty = match ast_ty with TPointer t -> t | t -> t in
-          let s_name =
-            match actual_ty with
-            | TNamed n | TStruct n -> n
-            | TGenericInst (n, arg_types) ->
-                n ^ "_" ^ String.concat "_" (List.map show_types arg_types)
-            | TInt | TI32 -> "int"
-            | TFloat | TF64 -> "float"
-            | TString -> "string"
-            | TBool -> "bool"
-            | TChar -> "char"
-            | TI8 -> "i8"
-            | TI16 -> "i16"
-            | TI64 -> "i64"
-            | TI128 -> "i128"
-            | TUInt | TU32 -> "uint"
-            | TU8 -> "u8"
-            | TU16 -> "u16"
-            | TU64 -> "u64"
-            | TU128 -> "u128"
-            | TF32 -> "f32"
-            | _ -> raise Not_found
-          in
+          let s_name = ast_base_type_name actual_ty in
           let mangled_name = s_name ^ "::" ^ method_name in
           let _, ret_ty = Hashtbl.find function_types mangled_name in
           ret_ty
@@ -724,40 +703,19 @@ and codegen_expr = function
                         in
 
                         let clean_name =
-                          match actual_ast_ty with
-                          | TNamed n | TStruct n -> n
-                          | TInt | TI32 -> "int"
-                          | TFloat | TF64 -> "float"
-                          | TString -> "string"
-                          | TBool -> "bool"
-                          | TChar -> "char"
-                          | TI8 -> "i8"
-                          | TI16 -> "i16"
-                          | TI64 -> "i64"
-                          | TI128 -> "i128"
-                          | TUInt | TU32 -> "uint"
-                          | TU8 -> "u8"
-                          | TU16 -> "u16"
-                          | TU64 -> "u64"
-                          | TU128 -> "u128"
-                          | TF32 -> "f32"
-                          | TGenericInst (n, arg_types) ->
-                              n ^ "_"
-                              ^ String.concat "_"
-                                  (List.map show_types arg_types)
-                          | _ -> (
-                              match struct_name actual_struct_ty with
-                              | Some s_name ->
-                                  if String.starts_with ~prefix:"struct." s_name
-                                  then
-                                    String.sub s_name 7
-                                      (String.length s_name - 7)
-                                  else s_name
-                              | None ->
-                                  raise
-                                    (Error
-                                       ("Cannot call method '" ^ method_name
-                                      ^ "' on a non-struct type")))
+                          try ast_base_type_name actual_ast_ty
+                          with Not_found -> (
+                            match struct_name actual_struct_ty with
+                            | Some s_name ->
+                                if String.starts_with ~prefix:"struct." s_name
+                                then
+                                  String.sub s_name 7 (String.length s_name - 7)
+                                else s_name
+                            | None ->
+                                raise
+                                  (Error
+                                     ("Cannot call method '" ^ method_name
+                                    ^ "' on a non-struct type")))
                         in
 
                         let mangled_name = clean_name ^ "::" ^ method_name in
@@ -1475,68 +1433,42 @@ and codegen_stmt = function
             else v
           in
 
-          let rec get_gep ptr ty props =
+          let rec resolve_assign ptr ty props =
             match props with
-            | [] -> ptr
+            | [] -> (ptr, ty)
             | prop :: rest -> (
                 match struct_name ty with
                 | Some s_name ->
-                    let clean_name =
-                      if String.starts_with ~prefix:"struct." s_name then
-                        String.sub s_name 7 (String.length s_name - 7)
-                      else s_name
-                    in
+                    let clean_name = clean_struct_name s_name in
                     let _, field_map =
                       Hashtbl.find struct_registry clean_name
                     in
-                    let _, idx, _ =
+                    let _, idx, is_mut =
                       List.find (fun (n, _, _) -> n = prop) field_map
                     in
+                    if rest = [] && not is_mut then
+                      raise
+                        (Error
+                           ("Cannot assign to immutable field '" ^ prop
+                          ^ "' on struct '" ^ clean_name ^ "'"));
                     let next_ptr =
                       build_struct_gep ty ptr idx "prop_ptr" ce_builder
                     in
                     let next_ty = (struct_element_types ty).(idx) in
-                    get_gep next_ptr next_ty rest
+                    resolve_assign next_ptr next_ty rest
                 | None ->
                     let idx = int_of_string prop in
                     let next_ptr =
                       build_struct_gep ty ptr idx "tuple_ptr" ce_builder
                     in
                     let next_ty = (struct_element_types ty).(idx) in
-                    get_gep next_ptr next_ty rest)
+                    resolve_assign next_ptr next_ty rest)
           in
 
-          let rec get_ty ty props =
-            match props with
-            | [] -> ty
-            | prop :: rest -> (
-                match struct_name ty with
-                | Some s_name ->
-                    let clean_name =
-                      if String.starts_with ~prefix:"struct." s_name then
-                        String.sub s_name 7 (String.length s_name - 7)
-                      else s_name
-                    in
-                    let _, field_map =
-                      Hashtbl.find struct_registry clean_name
-                    in
-                    let _, idx, is_field_mut =
-                      List.find (fun (n, _, _) -> n = prop) field_map
-                    in
-                    if rest = [] && not is_field_mut then
-                      raise
-                        (Error
-                           ("Cannot assign to immutable field '" ^ prop
-                          ^ "' on struct '" ^ clean_name ^ "'"));
-                    get_ty (struct_element_types ty).(idx) rest
-                | None ->
-                    let idx = int_of_string prop in
-                    get_ty (struct_element_types ty).(idx) rest)
+          let final_ptr, final_ty =
+            resolve_assign base_ptr base_struct_llty (List.tl parts)
           in
-
-          ( get_gep base_ptr base_struct_llty (List.tl parts),
-            get_ty base_struct_llty (List.tl parts),
-            false )
+          (final_ptr, final_ty, false)
         else
           let v, ast_ty, ismut =
             try Hashtbl.find named_values name
