@@ -6,7 +6,7 @@ let build_numeric_op lv rv build_int build_float name =
   if type_of lv = double_type ce_ctx then build_float lv rv name ce_builder
   else build_int lv rv name ce_builder
 
-let resolve_property_ptr current_ptr current_ty props =
+and resolve_property_ptr current_ptr current_ty props =
   let rec get_gep ptr ty props =
     match props with
     | [] -> ptr
@@ -36,3 +36,7 @@ let resolve_property_ptr current_ptr current_ty props =
               (Error ("Cannot access property '" ^ prop ^ "' on non-struct")))
   in
   get_gep current_ptr current_ty props
+
+and is_unsigned = function
+  | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
+  | _ -> false

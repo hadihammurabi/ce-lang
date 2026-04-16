@@ -9,14 +9,9 @@ impl string {
     let length uint = self.len()
     let new_ptr *char = malloc<char>(length + 1)
     
-    let mut i uint
-    for {
-      if i > length {
-        break
-      }
+    for i uint = 0; i <= length; i = i + 1 {
       let mut newPtrI = new_ptr + i
       *newPtrI = self.at(i)
-      i = i + 1
     }
     
     return new_ptr
@@ -151,5 +146,32 @@ impl string {
     }
     
     return false
+  }
+
+  fn repeat(self, count uint) !string {
+    assert(count >= 0, "repeat count is negative")
+
+    if count == 0 {
+      return ""
+    }
+
+    let c uint = count 
+    let len uint = self.len()
+    let total_len uint = len * c
+    let new_ptr *char = malloc<char>(total_len + 1)
+
+    for i = 0; i < c; i = i + 1 {
+      for j = 0; j < len; j = j + 1 {
+        if j >= len {
+          break
+        }
+        *(new_ptr + (i * len) + j) = *(self + j)
+      }
+    }
+
+    let null_char char = 0
+    *(new_ptr + total_len) = null_char
+    
+    return new_ptr
   }
 }

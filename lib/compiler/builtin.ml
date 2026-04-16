@@ -222,11 +222,7 @@ let get name =
                   let v_i32 =
                     build_intcast v (i32_type context) "cast_i32" builder
                   in
-                  let is_unsigned =
-                    match ast_ty with
-                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
-                    | _ -> false
-                  in
+                  let is_unsigned = Utils.is_unsigned ast_ty in
                   let fmt_str = if is_unsigned then "%u" else "%d" in
                   let fmt = build_global_stringptr fmt_str "fmt" builder in
                   ignore
@@ -234,23 +230,14 @@ let get name =
                        builder)
                 end
                 else if bw = 64 then begin
-                  let is_unsigned =
-                    match ast_ty with
-                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
-                    | _ -> false
-                  in
+                  let is_unsigned = Utils.is_unsigned ast_ty in
                   let fmt_str = if is_unsigned then "%lu" else "%ld" in
                   let fmt = build_global_stringptr fmt_str "fmt" builder in
                   ignore
                     (build_call printf_ty printf_func [| fmt; v |] "p" builder)
                 end
                 else begin
-                  let is_unsigned =
-                    match ast_ty with
-                    | TUInt | TU8 | TU16 | TU32 | TU64 | TU128 -> true
-                    | _ -> false
-                  in
-
+                  let is_unsigned = Utils.is_unsigned ast_ty in
                   let v_float =
                     if is_unsigned then
                       build_uitofp v (double_type context) "cast_u128_to_f64"
