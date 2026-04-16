@@ -113,6 +113,7 @@ let rec llvm_type_of = function
           | None -> ());
 
           fst (Hashtbl.find struct_registry mangled_name))
+  | TTuple ts -> struct_type ce_ctx (Array.of_list (List.map llvm_type_of ts))
 
 and instantiate_generic_fn name targs =
   let mangled_name =
@@ -236,6 +237,7 @@ and infer_ast_type = function
           let _, ret_ty = Hashtbl.find function_types name in
           ret_ty
         with Not_found -> TUnknown)
+  | Tuple es -> TTuple (List.map infer_ast_type es)
   | _ -> TUnknown
 
 and codegen_expr = function
@@ -907,6 +909,17 @@ and codegen_expr = function
           [ (!catch_val, err_end_bb); (ok_val, ok_end_bb) ]
           "catch_res" ce_builder
       else ok_val
+  | Tuple elems ->
+      let lltypes = List.map (fun e -> type_of (codegen_expr e)) elems in
+      let struct_ty = struct_type ce_ctx (Array.of_list lltypes) in
+      let alloc = build_alloca struct_ty "tupletmp" ce_builder in
+      List.iteri
+        (fun i e ->
+          let e_val = codegen_expr e in
+          let ptr = build_struct_gep struct_ty alloc i "tupleelem" ce_builder in
+          ignore (build_store e_val ptr ce_builder))
+        elems;
+      build_load struct_ty alloc "tupleload" ce_builder
 
 and coerce_value expected_ll_ty raw_val is_unsigned_target is_unsigned_source =
   let raw_ty = type_of raw_val in
@@ -920,13 +933,12 @@ and coerce_value expected_ll_ty raw_val is_unsigned_target is_unsigned_source =
        | Some v ->
            let bw = integer_bitwidth raw_ty in
            if bw <= 64 then
-             (* Manually isolate the sign bit to check for negatives *)
              let sign_bit = Int64.shift_left 1L (bw - 1) in
              if Int64.logand v sign_bit <> 0L then
                raise (Error "Cannot assign negative value to unsigned type")
-             else false (* Constant is positive, safely skip runtime check *)
-           else true (* i128 constant fallback to runtime check *)
-       | None -> true (* Not a constant, need runtime check *)
+             else false
+           else true
+       | None -> true
      in
      if needs_runtime_check then begin
        let the_func = block_parent (insertion_block ce_builder) in

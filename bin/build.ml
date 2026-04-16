@@ -53,6 +53,7 @@ let rec namespace_type prefix decls = function
   | TPointer ty -> TPointer (namespace_type prefix decls ty)
   | TArray (n, ty) -> TArray (n, namespace_type prefix decls ty)
   | TResult ty -> TResult (namespace_type prefix decls ty)
+  | TTuple ts -> TTuple (List.map (namespace_type prefix decls) ts)
   | t -> t
 
 and namespace_expr prefix decls = function
@@ -121,6 +122,7 @@ and namespace_expr prefix decls = function
         ( new_name,
           List.map (namespace_type prefix decls) targs,
           List.map (fun (n, e) -> (n, namespace_expr prefix decls e)) fields )
+  | Tuple es -> Tuple (List.map (namespace_expr prefix decls) es)
   | e -> e
 
 and namespace_stmt prefix decls = function

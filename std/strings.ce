@@ -9,7 +9,7 @@ impl string {
     let length uint = self.len()
     let new_ptr *char = malloc<char>(length + 1)
     
-    for i uint = 0; i <= length; i = i + 1 {
+    for i = 0; i <= length; i = i + 1 {
       let mut newPtrI = new_ptr + i
       *newPtrI = self.at(i)
     }
@@ -20,8 +20,7 @@ impl string {
   fn compare(self, other string) int {
     let null_char char = 0
 
-    let mut i uint
-    for {
+    for i = 0; true; i = i + 1 {
       let char_a char = *(self + i)
       let char_b char = *(other + i)
 
@@ -31,12 +30,9 @@ impl string {
       if char_a > char_b {
         return 1
       }
-
       if char_a == null_char {
         break
       }
-      
-      i = i + 1
     }
 
     return 0
@@ -50,23 +46,15 @@ impl string {
       return false
     }
 
-    let mut i uint
-    for {
-      if i >= pref_len {
-        break
-      }
-      
+    for i = 0; i < pref_len; i = i + 1 {
       let char_self char = *(self + i)
       let char_pref char = *(prefix + i)
-      
-      if char_self == char_pref {
-      } else {
+
+      if !(char_self == char_pref) {
         return false
       }
-      
-      i = i + 1
     }
-    
+
     return true
   }
 
@@ -79,24 +67,16 @@ impl string {
     }
 
     let offset uint = self_len - suff_len
-    let mut i uint
-    
-    for {
-      if i >= suff_len {
-        break
-      }
-      
+
+    for i = 0; i < suff_len; i = i + 1 {
       let char_self char = *(self + offset + i)
       let char_suff char = *(suffix + i)
-      
-      if char_self == char_suff {
-      } else {
+
+      if !(char_self == char_suff) {
         return false
       }
-      
-      i = i + 1
     }
-    
+
     return true
   }
 
@@ -107,42 +87,26 @@ impl string {
     if sub_len == 0 {
       return true
     }
+
     if sub_len > self_len {
       return false
     }
 
     let limit uint = self_len - sub_len
-    let mut i uint
-    
-    for {
-      if i > limit {
-        break
-      }
-      
+    for i = 0; i <= limit; i = i + 1 {
       let mut is_match bool = true
-      let mut j uint
-      
-      for {
-        if j >= sub_len {
-          break
-        }
-        
+      for j = 0; j < sub_len; j = j + 1 {
         let char_self char = *(self + i + j)
         let char_sub char = *(substr + j)
-        
-        if char_self == char_sub {
-        } else {
+        if !(char_self == char_sub) {
           is_match = false
           break
         }
-        j = j + 1
       }
 
       if is_match {
         return true
       }
-
-      i = i + 1
     }
     
     return false
@@ -162,16 +126,13 @@ impl string {
 
     for i = 0; i < c; i = i + 1 {
       for j = 0; j < len; j = j + 1 {
-        if j >= len {
-          break
-        }
         *(new_ptr + (i * len) + j) = *(self + j)
       }
     }
 
     let null_char char = 0
     *(new_ptr + total_len) = null_char
-    
+
     return new_ptr
   }
 }

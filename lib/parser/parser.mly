@@ -117,6 +117,7 @@ types:
   | STAR ty = types                       { TPointer ty }
   | name = path LT arg_ty = types GT { TGenericInst (name, [arg_ty]) }
   | BANG ty = types                       { TResult ty }
+  | LPAREN t = types COMMA rest = separated_nonempty_list(COMMA, types) RPAREN { TTuple (t :: rest) }
 
 array:
   | LBRACKET n = INT RBRACKET t = type_scalar
@@ -255,6 +256,7 @@ expr_simple:
 
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
     { Catch(e, id, ty, body) }
+  | LPAREN e = expr COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
 
 expr:
   | e = expr_simple               { e }
@@ -291,6 +293,7 @@ expr_simple_no_struct:
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
   | e = expr_no_struct LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
     { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
+  | LPAREN e = expr_no_struct COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
 
 expr_no_struct:
   | e = expr_simple_no_struct                     { e }

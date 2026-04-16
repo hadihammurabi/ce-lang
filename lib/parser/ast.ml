@@ -32,6 +32,7 @@ type types =
   | TGenericParam of string
   | TGenericInst of string * types list
   | TArray of int * types
+  | TTuple of types list
 [@@deriving show]
 
 let rec t = function
@@ -48,6 +49,7 @@ let rec t = function
   | TPointer _ -> pointer_type ce_ctx
   | TVoid -> void_type ce_ctx
   | TArray (n, inner) -> array_type (t inner) n
+  | TTuple ts -> struct_type ce_ctx (Array.of_list (List.map t ts))
   | _ -> failwith "Codegen error: TypeUnknown reached LLVM backend"
 
 type expr =
@@ -81,6 +83,7 @@ type expr =
   | ArrayAccess of string * expr
   | If of expr * stmt list * (expr * stmt list) list * stmt list option
   | Struct of string * types list * (string * expr) list
+  | Tuple of expr list
 [@@deriving show]
 
 and param = { param_name : string; ty : types }
