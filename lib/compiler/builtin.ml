@@ -182,7 +182,39 @@ let get name =
                       else s_name
                     in
                     build_global_stringptr clean_name "s_struct" builder
-                | None -> str_unk
+                | None -> (
+                    let rec type_to_string = function
+                      | TInt | TI32 -> "int"
+                      | TFloat | TF64 -> "float"
+                      | TBool -> "bool"
+                      | TString -> "string"
+                      | TChar -> "char"
+                      | TI8 -> "i8"
+                      | TI16 -> "i16"
+                      | TI64 -> "i64"
+                      | TI128 -> "i128"
+                      | TUInt | TU32 -> "uint"
+                      | TU8 -> "u8"
+                      | TU16 -> "u16"
+                      | TU64 -> "u64"
+                      | TU128 -> "u128"
+                      | TF32 -> "f32"
+                      | TTuple ts ->
+                          "("
+                          ^ String.concat ", " (List.map type_to_string ts)
+                          ^ ")"
+                      | TNamed n | TStruct n -> n
+                      | TArray (n, t) ->
+                          "[" ^ string_of_int n ^ "]" ^ type_to_string t
+                      | TResult t -> "!" ^ type_to_string t
+                      | _ -> "unknown"
+                    in
+                    let ast_ty = List.hd arg_asts in
+                    match ast_ty with
+                    | TTuple _ ->
+                        build_global_stringptr (type_to_string ast_ty) "s_tuple"
+                          builder
+                    | _ -> str_unk)
                 end
           | _ -> str_unk)
   | "println" | "print" | "printf" ->
