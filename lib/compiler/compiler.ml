@@ -162,6 +162,7 @@ and infer_ast_type = function
       infer_ast_type l
   | Eq _ | Lt _ | Lte _ | Gt _ | Gte _ | And _ | Or _ -> TBool
   | Neg e -> infer_ast_type e
+  | Not _ -> TBool
   | Ref e -> TPointer (infer_ast_type e)
   | Deref e -> (
       match infer_ast_type e with
@@ -419,6 +420,9 @@ and codegen_expr = function
       let v = codegen_expr e in
       if type_of v = double_type ce_ctx then build_fneg v "fnegtmp" ce_builder
       else build_neg v "negtmp" ce_builder
+  | Not e ->
+      let v = codegen_expr e in
+      build_not v "nottmp" ce_builder
   | Call (name, targs, args) -> (
       if String.ends_with ~suffix:".as" name && List.length targs = 1 then begin
         let base_path = String.sub name 0 (String.length name - 3) in

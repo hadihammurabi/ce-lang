@@ -81,6 +81,7 @@ and namespace_expr prefix decls = function
   | Or (l, r) ->
       Or (namespace_expr prefix decls l, namespace_expr prefix decls r)
   | Neg e -> Neg (namespace_expr prefix decls e)
+  | Not e -> Not (namespace_expr prefix decls e)
   | Ref e -> Ref (namespace_expr prefix decls e)
   | Deref e -> Deref (namespace_expr prefix decls e)
   | Call (name, targs, args) ->

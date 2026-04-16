@@ -74,6 +74,7 @@ type expr =
   | And of expr * expr
   | Or of expr * expr
   | Neg of expr
+  | Not of expr
   | Call of string * types list * expr list
   | Let of string
   | Array of int * types * expr list

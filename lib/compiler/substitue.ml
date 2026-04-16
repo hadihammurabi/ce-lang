@@ -37,6 +37,7 @@ and substitute_expr type_map = function
   | And (l, r) -> And (substitute_expr type_map l, substitute_expr type_map r)
   | Or (l, r) -> Or (substitute_expr type_map l, substitute_expr type_map r)
   | Neg e -> Neg (substitute_expr type_map e)
+  | Not e -> Not (substitute_expr type_map e)
   | Ref e -> Ref (substitute_expr type_map e)
   | Deref e -> Deref (substitute_expr type_map e)
   | Call (name, targs, args) ->

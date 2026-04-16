@@ -237,6 +237,7 @@ expr_simple:
   | c = CHAR                                                      { Char c }
   | id = path                                                     { Let id }
   | MINUS e = expr %prec UMINUS                                   { Neg e }
+  | BANG e = expr %prec UMINUS                                    { Not e }
   | AMP e = expr_simple                                           { Ref e }
   | STAR e = expr_simple                                          { Deref e }
   | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
@@ -283,6 +284,7 @@ expr_simple_no_struct:
   | c = CHAR                                                      { Char c }
   | id = path                                                     { Let id }
   | MINUS e = expr_no_struct %prec UMINUS                         { Neg e }
+  | BANG e = expr_no_struct %prec UMINUS                          { Not e }
   | AMP e = expr_simple_no_struct                                 { Ref e }
   | STAR e = expr_simple_no_struct                                { Deref e }
   | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
