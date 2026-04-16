@@ -54,6 +54,10 @@ let rec namespace_type prefix decls = function
   | TArray (n, ty) -> TArray (n, namespace_type prefix decls ty)
   | TResult ty -> TResult (namespace_type prefix decls ty)
   | TTuple ts -> TTuple (List.map (namespace_type prefix decls) ts)
+  | TFn (args, ret) ->
+      TFn
+        ( List.map (namespace_type prefix decls) args,
+          namespace_type prefix decls ret )
   | t -> t
 
 and namespace_expr prefix decls = function
@@ -123,6 +127,16 @@ and namespace_expr prefix decls = function
           List.map (namespace_type prefix decls) targs,
           List.map (fun (n, e) -> (n, namespace_expr prefix decls e)) fields )
   | Tuple es -> Tuple (List.map (namespace_expr prefix decls) es)
+  | AnonFN (params, ret_ty, body) ->
+      let s_params =
+        List.map
+          (fun (p : param) -> { p with ty = namespace_type prefix decls p.ty })
+          params
+      in
+      AnonFN
+        ( s_params,
+          namespace_type prefix decls ret_ty,
+          List.map (namespace_stmt prefix decls) body )
   | e -> e
 
 and namespace_stmt prefix decls = function

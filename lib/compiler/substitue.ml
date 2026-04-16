@@ -11,6 +11,9 @@ let rec substitute_type type_map = function
       TGenericInst (name, List.map (substitute_type type_map) args)
   | TResult ty -> TResult (substitute_type type_map ty)
   | TTuple ts -> TTuple (List.map (substitute_type type_map) ts)
+  | TFn (args, ret) ->
+      TFn
+        (List.map (substitute_type type_map) args, substitute_type type_map ret)
   | other -> other
 
 and substitute_expr type_map = function
@@ -69,6 +72,16 @@ and substitute_expr type_map = function
           substitute_type type_map ty,
           List.map (substitute_stmt type_map) stmts )
   | Tuple es -> Tuple (List.map (substitute_expr type_map) es)
+  | AnonFN (params, ret_ty, body) ->
+      let s_params =
+        List.map
+          (fun (p : param) -> { p with ty = substitute_type type_map p.ty })
+          params
+      in
+      AnonFN
+        ( s_params,
+          substitute_type type_map ret_ty,
+          List.map (substitute_stmt type_map) body )
   | e -> e
 
 and substitute_stmt type_map = function

@@ -116,6 +116,35 @@ let get name =
           let str_char = build_global_stringptr "char" "s_char" builder in
           let str_unk = build_global_stringptr "unknown" "s_unk" builder in
 
+          let rec type_to_string = function
+            | TInt | TI32 -> "int"
+            | TFloat | TF64 -> "float"
+            | TBool -> "bool"
+            | TString -> "string"
+            | TChar -> "char"
+            | TI8 -> "i8"
+            | TI16 -> "i16"
+            | TI64 -> "i64"
+            | TI128 -> "i128"
+            | TUInt | TU32 -> "uint"
+            | TU8 -> "u8"
+            | TU16 -> "u16"
+            | TU64 -> "u64"
+            | TU128 -> "u128"
+            | TF32 -> "f32"
+            | TTuple ts ->
+                "(" ^ String.concat ", " (List.map type_to_string ts) ^ ")"
+            | TNamed n | TStruct n -> n
+            | TArray (n, t) -> "[" ^ string_of_int n ^ "]" ^ type_to_string t
+            | TResult t -> "!" ^ type_to_string t
+            | TFn (args, ret) ->
+                "fn("
+                ^ String.concat ", " (List.map type_to_string args)
+                ^ ") " ^ type_to_string ret
+            | _ -> "unknown"
+          in
+          let ast_ty = List.hd arg_asts in
+
           match classify_type ty with
           | TypeKind.Integer ->
               let bw = integer_bitwidth ty in
@@ -128,7 +157,11 @@ let get name =
               else str_int
           | TypeKind.Double -> str_float
           | TypeKind.Float -> build_global_stringptr "f32" "s_f32" builder
-          | TypeKind.Pointer -> str_str
+          | TypeKind.Pointer -> (
+              match ast_ty with
+              | TFn _ ->
+                  build_global_stringptr (type_to_string ast_ty) "s_fn" builder
+              | _ -> str_str)
           | TypeKind.Struct ->
               let elems = struct_element_types ty in
               if
@@ -183,33 +216,6 @@ let get name =
                     in
                     build_global_stringptr clean_name "s_struct" builder
                 | None -> (
-                    let rec type_to_string = function
-                      | TInt | TI32 -> "int"
-                      | TFloat | TF64 -> "float"
-                      | TBool -> "bool"
-                      | TString -> "string"
-                      | TChar -> "char"
-                      | TI8 -> "i8"
-                      | TI16 -> "i16"
-                      | TI64 -> "i64"
-                      | TI128 -> "i128"
-                      | TUInt | TU32 -> "uint"
-                      | TU8 -> "u8"
-                      | TU16 -> "u16"
-                      | TU64 -> "u64"
-                      | TU128 -> "u128"
-                      | TF32 -> "f32"
-                      | TTuple ts ->
-                          "("
-                          ^ String.concat ", " (List.map type_to_string ts)
-                          ^ ")"
-                      | TNamed n | TStruct n -> n
-                      | TArray (n, t) ->
-                          "[" ^ string_of_int n ^ "]" ^ type_to_string t
-                      | TResult t -> "!" ^ type_to_string t
-                      | _ -> "unknown"
-                    in
-                    let ast_ty = List.hd arg_asts in
                     match ast_ty with
                     | TTuple _ ->
                         build_global_stringptr (type_to_string ast_ty) "s_tuple"
@@ -295,21 +301,30 @@ let get name =
                 let fmt = build_global_stringptr "%f" "fmt" builder in
                 ignore
                   (build_call printf_ty printf_func [| fmt; v_ext |] "p" builder)
-            | TypeKind.Pointer ->
-                let is_null = build_is_null v "is_null" builder in
-                let nil_str =
-                  build_global_stringptr "<nil>" "nil_str" builder
-                in
-                let ptr_ty = pointer_type context in
-                let v_cast = build_bitcast v ptr_ty "v_cast" builder in
-                let print_val =
-                  build_select is_null nil_str v_cast "print_val" builder
-                in
-                let fmt = build_global_stringptr "%s" "fmt" builder in
-
-                ignore
-                  (build_call printf_ty printf_func [| fmt; print_val |] "p"
-                     builder)
+            | TypeKind.Pointer -> (
+                match ast_ty with
+                | TFn _ ->
+                    let fn_str =
+                      build_global_stringptr "<fn>" "fn_str" builder
+                    in
+                    let fmt = build_global_stringptr "%s" "fmt" builder in
+                    ignore
+                      (build_call printf_ty printf_func [| fmt; fn_str |] "p"
+                         builder)
+                | _ ->
+                    let is_null = build_is_null v "is_null" builder in
+                    let nil_str =
+                      build_global_stringptr "<nil>" "nil_str" builder
+                    in
+                    let ptr_ty = pointer_type context in
+                    let v_cast = build_bitcast v ptr_ty "v_cast" builder in
+                    let print_val =
+                      build_select is_null nil_str v_cast "print_val" builder
+                    in
+                    let fmt = build_global_stringptr "%s" "fmt" builder in
+                    ignore
+                      (build_call printf_ty printf_func [| fmt; print_val |] "p"
+                         builder))
             | TypeKind.Struct ->
                 let elems = struct_element_types ty in
                 if

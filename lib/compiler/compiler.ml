@@ -114,6 +114,7 @@ let rec llvm_type_of = function
 
           fst (Hashtbl.find struct_registry mangled_name))
   | TTuple ts -> struct_type ce_ctx (Array.of_list (List.map llvm_type_of ts))
+  | TFn _ -> pointer_type ce_ctx
 
 and instantiate_generic_fn name targs =
   let mangled_name =
@@ -238,6 +239,8 @@ and infer_ast_type = function
           ret_ty
         with Not_found -> TUnknown)
   | Tuple es -> TTuple (List.map infer_ast_type es)
+  | AnonFN (params, ret_ty, _) ->
+      TFn (List.map (fun (p : param) -> p.ty) params, ret_ty)
   | _ -> TUnknown
 
 and codegen_expr = function
@@ -599,7 +602,40 @@ and codegen_expr = function
                     in
                     build_call ft callee args_val call_name ce_builder
                 | None ->
-                    if Hashtbl.mem fn_templates name then
+                    let is_fn_var =
+                      try
+                        match infer_ast_type (Let name) with
+                        | TFn _ -> true
+                        | _ -> false
+                      with _ -> false
+                    in
+
+                    if is_fn_var then
+                      let fn_val = codegen_expr (Let name) in
+                      let fn_ast_ty = infer_ast_type (Let name) in
+                      match fn_ast_ty with
+                      | TFn (param_tys, ret_ty) ->
+                          let expected_tys =
+                            Array.of_list (List.map llvm_type_of param_tys)
+                          in
+                          let ft =
+                            function_type (llvm_type_of ret_ty) expected_tys
+                          in
+                          let arg_vals =
+                            List.mapi
+                              (fun i arg ->
+                                (coerce_value expected_tys.(i)
+                                   (codegen_expr arg))
+                                  false false)
+                              args
+                          in
+                          let call_name =
+                            if ret_ty = TVoid then "" else "fnptr_calltmp"
+                          in
+                          build_call ft fn_val (Array.of_list arg_vals)
+                            call_name ce_builder
+                      | _ -> raise (Error "Unreachable")
+                    else if Hashtbl.mem fn_templates name then
                       raise
                         (Error
                            ("Function '" ^ name
@@ -920,6 +956,69 @@ and codegen_expr = function
           ignore (build_store e_val ptr ce_builder))
         elems;
       build_load struct_ty alloc "tupleload" ce_builder
+  | AnonFN (params, ret_ty, body) ->
+      let anon_id = Oo.id object end in
+      let actual_name = Printf.sprintf "__anon_fn_%d" anon_id in
+
+      let was_res = !current_fn_is_res in
+      let was_ret_ty = !current_fn_ret_ty in
+      let old_bb = insertion_block ce_builder in
+
+      (current_fn_is_res := match ret_ty with TResult _ -> true | _ -> false);
+      current_fn_ret_ty := llvm_type_of ret_ty;
+
+      let param_types =
+        Array.of_list (List.map (fun (p : param) -> llvm_type_of p.ty) params)
+      in
+      let ft = function_type (llvm_type_of ret_ty) param_types in
+      Hashtbl.add function_types actual_name (ft, ret_ty);
+
+      let f = declare_function actual_name ft ce_module in
+      set_linkage Linkage.Internal f;
+      let bb = append_block ce_ctx "entry" f in
+      position_at_end bb ce_builder;
+
+      let old_named_values = Hashtbl.copy named_values in
+      Array.iteri
+        (fun i a ->
+          let n = (List.nth params i).param_name in
+          let p_ty = (List.nth params i).ty in
+          let llvm_p_ty = llvm_type_of p_ty in
+          let alloca = build_alloca llvm_p_ty n ce_builder in
+          ignore (build_store a alloca ce_builder);
+          Hashtbl.add named_values n (alloca, p_ty, false))
+        (Llvm.params f);
+
+      List.iter
+        (fun s ->
+          if Option.is_none (block_terminator (insertion_block ce_builder)) then
+            ignore (codegen_stmt s))
+        body;
+
+      let current_bb = insertion_block ce_builder in
+      (match block_terminator current_bb with
+      | Some _ -> ()
+      | None ->
+          if ret_ty = TVoid then ignore (build_ret_void ce_builder)
+          else if !current_fn_is_res then begin
+            let r_ty = !current_fn_ret_ty in
+            let s1 =
+              build_insertvalue (const_null r_ty)
+                (const_int (i1_type ce_ctx) 0)
+                0 "res_ok" ce_builder
+            in
+            ignore (build_ret s1 ce_builder)
+          end
+          else raise (Error "Anonymous function missing a return statement"));
+
+      Hashtbl.clear named_values;
+      Hashtbl.iter (fun k v -> Hashtbl.add named_values k v) old_named_values;
+
+      current_fn_is_res := was_res;
+      current_fn_ret_ty := was_ret_ty;
+      position_at_end old_bb ce_builder;
+
+      f
 
 and coerce_value expected_ll_ty raw_val is_unsigned_target is_unsigned_source =
   let raw_ty = type_of raw_val in
