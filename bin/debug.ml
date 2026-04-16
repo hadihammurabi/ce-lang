@@ -6,7 +6,7 @@ let execute file =
   let ast = Build.process_file visited file in
   try
     let prog = ast |> Compiler.compile in
-    Compiler.dump prog
+    Generator.dump prog
   with Failure msg ->
     Printf.printf "Error: %s\n" msg;
     exit 1

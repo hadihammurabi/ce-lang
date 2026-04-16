@@ -294,7 +294,7 @@ let execute file =
 
   let ast = process_file visited file in
 
-  let _ = ast |> Compiler.compile |> Compiler.export binary_name in
+  let _ = ast |> Compiler.compile |> Generator.export binary_name in
   Printf.printf "Compiled and linked: %s\n" binary_name
 
 let command =

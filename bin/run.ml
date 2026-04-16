@@ -6,7 +6,7 @@ let execute file =
   let visited = Hashtbl.create 10 in
   let ast = Build.process_file visited file in
   let _ =
-    try ast |> Compiler.compile |> Compiler.export binary_name
+    try ast |> Compiler.compile |> Generator.export binary_name
     with Failure msg ->
       Printf.printf "Error: %s\n" msg;
       exit 1
