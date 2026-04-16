@@ -422,7 +422,9 @@ and codegen_expr = function
       else build_neg v "negtmp" ce_builder
   | Not e ->
       let v = codegen_expr e in
-      build_not v "nottmp" ce_builder
+      if type_of v = i1_type ce_ctx then build_not v "nottmp" ce_builder
+      else
+        raise (Error "NOT operator (!) can only be applied to boolean values")
   | Call (name, targs, args) -> (
       if String.ends_with ~suffix:".as" name && List.length targs = 1 then begin
         let base_path = String.sub name 0 (String.length name - 3) in
