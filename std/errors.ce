@@ -1,0 +1,5 @@
+fn or<T any>(value T) fn(string)T {
+    return fn(e string) T {
+        return value
+      }
+  }

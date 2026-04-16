@@ -1,5 +1,49 @@
 %{
   open Ast
+
+  let rec attach_generic_call e targs args =
+    match e with
+    | Let id -> Call(id, targs, args)
+    | CatchExpr(l, r) -> CatchExpr(l, attach_generic_call r targs args)
+    | Add(l, r) -> Add(l, attach_generic_call r targs args)
+    | Sub(l, r) -> Sub(l, attach_generic_call r targs args)
+    | Mul(l, r) -> Mul(l, attach_generic_call r targs args)
+    | Div(l, r) -> Div(l, attach_generic_call r targs args)
+    | Mod(l, r) -> Mod(l, attach_generic_call r targs args)
+    | Eq(l, r) -> Eq(l, attach_generic_call r targs args)
+    | Lt(l, r) -> Lt(l, attach_generic_call r targs args)
+    | Lte(l, r) -> Lte(l, attach_generic_call r targs args)
+    | Gt(l, r) -> Gt(l, attach_generic_call r targs args)
+    | Gte(l, r) -> Gte(l, attach_generic_call r targs args)
+    | And(l, r) -> And(l, attach_generic_call r targs args)
+    | Or(l, r) -> Or(l, attach_generic_call r targs args)
+    | Not e -> Not (attach_generic_call e targs args)
+    | Neg e -> Neg (attach_generic_call e targs args)
+    | Ref e -> Ref (attach_generic_call e targs args)
+    | Deref e -> Deref (attach_generic_call e targs args)
+    | _ -> raise (Failure "Invalid generic function call")
+
+  let rec attach_generic_struct e targs fields =
+    match e with
+    | Let id -> Struct(id, targs, fields)
+    | CatchExpr(l, r) -> CatchExpr(l, attach_generic_struct r targs fields)
+    | Add(l, r) -> Add(l, attach_generic_struct r targs fields)
+    | Sub(l, r) -> Sub(l, attach_generic_struct r targs fields)
+    | Mul(l, r) -> Mul(l, attach_generic_struct r targs fields)
+    | Div(l, r) -> Div(l, attach_generic_struct r targs fields)
+    | Mod(l, r) -> Mod(l, attach_generic_struct r targs fields)
+    | Eq(l, r) -> Eq(l, attach_generic_struct r targs fields)
+    | Lt(l, r) -> Lt(l, attach_generic_struct r targs fields)
+    | Lte(l, r) -> Lte(l, attach_generic_struct r targs fields)
+    | Gt(l, r) -> Gt(l, attach_generic_struct r targs fields)
+    | Gte(l, r) -> Gte(l, attach_generic_struct r targs fields)
+    | And(l, r) -> And(l, attach_generic_struct r targs fields)
+    | Or(l, r) -> Or(l, attach_generic_struct r targs fields)
+    | Not e -> Not (attach_generic_struct e targs fields)
+    | Neg e -> Neg (attach_generic_struct e targs fields)
+    | Ref e -> Ref (attach_generic_struct e targs fields)
+    | Deref e -> Deref (attach_generic_struct e targs fields)
+    | _ -> raise (Failure "Invalid generic struct instantiation")
 %}
 
 %token <int>    INT
@@ -250,11 +294,11 @@ expr_simple:
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
 
   | e = expr LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
-    { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
+    { attach_generic_call e targs args }
   | e = expr LT targs = separated_list(COMMA, types) GT LBRACE sep_opt RBRACE
-    { match e with Let name -> Struct (name, targs, []) | _ -> raise (Failure "Invalid generic struct instantiation") }
+    { attach_generic_struct e targs [] }
   | e = expr LT targs = separated_list(COMMA, types) GT LBRACE sep_opt fields = struct_init_list RBRACE
-    { match e with Let name -> Struct (name, targs, fields) | _ -> raise (Failure "Invalid generic struct instantiation") }
+    { attach_generic_struct e targs fields }
 
   | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block { Catch(e, id, ty, body) }
   | e = expr_simple CATCH handler = expr_simple { CatchExpr(e, handler) }
@@ -296,7 +340,7 @@ expr_simple_no_struct:
   | name = path LBRACKET idx = expr RBRACKET                      { ArrayAccess (name, idx) }
   | id = path LPAREN args = separated_list(COMMA, expr) RPAREN    { Call(id, [], args) }
   | e = expr_no_struct LT targs = separated_list(COMMA, types) GT LPAREN args = separated_list(COMMA, expr) RPAREN
-    { match e with Let id -> Call(id, targs, args) | _ -> raise (Failure "Invalid generic function call") }
+    { attach_generic_call e targs args }
   | LPAREN e = expr_no_struct COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
   | FN LPAREN RPAREN ty = types body = block { AnonFN([], ty, body) }
   | FN LPAREN params = separated_nonempty_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }
