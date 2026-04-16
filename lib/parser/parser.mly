@@ -64,11 +64,13 @@ stmt:
   | BREAK           { Break }
   | block           { Block $1 }
   | expr            { Expr $1 }
-  | FOR body = block { For (None, body) }
-  | FOR cond = expr_no_struct body = block { For (Some cond, body) }
   | RAISE e = expr  { Raise e }
   | IMPL struct_name = impl_target params = generic_params_opt LBRACE sep_opt methods = impl_method_list RBRACE
       { Impl (struct_name, params, methods) }
+  | FOR body = block { For (None, None, None, body) }
+  | FOR cond = expr_no_struct body = block { For (None, Some cond, None, body) }
+  | FOR init = for_init SEMICOLON cond = expr_no_struct body = block { For (Some init, Some cond, None, body) }
+  | FOR init = for_init SEMICOLON cond = expr_no_struct SEMICOLON mut = for_mut body = block { For (Some init, Some cond, Some mut, body) }
 
 block:
   | LBRACE sep_opt RBRACE             { [] }
@@ -212,6 +214,16 @@ fn_signature_list:
 fn_signature:
   | FN name = IDENT LPAREN params = separated_list(COMMA, param) RPAREN ty = types 
       { { fn_name = name; params = params; ret_ty = ty } }
+
+for_init:
+  | name = IDENT ty = types EQUALS e = expr { DefLet (name, true, ty, Some e) }
+  | name = IDENT EQUALS e = expr            { DefLet (name, true, TUnknown, Some e) }
+
+for_mut:
+  | name = path EQUALS e = expr_no_struct { Assign (name, e) }
+  | name = path LBRACKET idx = expr RBRACKET EQUALS e = expr_no_struct { ArrayAssign (name, idx, e) }
+  | STAR ptr = expr_simple EQUALS e = expr_no_struct { DerefAssign (ptr, e) }
+  | e = expr_no_struct { Expr e }
 
 expr_simple:
   | a = array                                                     { a }

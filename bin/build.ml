@@ -140,9 +140,11 @@ and namespace_stmt prefix decls = function
         (namespace_expr prefix decls ptr, namespace_expr prefix decls e)
   | Return e -> Return (namespace_expr prefix decls e)
   | Block stmts -> Block (List.map (namespace_stmt prefix decls) stmts)
-  | For (cond, stmts) ->
+  | For (init, cond, mut, stmts) ->
       For
-        ( Option.map (namespace_expr prefix decls) cond,
+        ( Option.map (namespace_stmt prefix decls) init,
+          Option.map (namespace_expr prefix decls) cond,
+          Option.map (namespace_stmt prefix decls) mut,
           List.map (namespace_stmt prefix decls) stmts )
   | Raise e -> Raise (namespace_expr prefix decls e)
   | DefFN (name, tparams, params, ty, body) ->

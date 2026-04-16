@@ -85,9 +85,11 @@ and substitute_stmt type_map = function
       DerefAssign (substitute_expr type_map ptr, substitute_expr type_map e)
   | Return e -> Return (substitute_expr type_map e)
   | Block stmts -> Block (List.map (substitute_stmt type_map) stmts)
-  | For (cond, stmts) ->
+  | For (init, cond, mut, stmts) ->
       For
-        ( Option.map (substitute_expr type_map) cond,
+        ( Option.map (substitute_stmt type_map) init,
+          Option.map (substitute_expr type_map) cond,
+          Option.map (substitute_stmt type_map) mut,
           List.map (substitute_stmt type_map) stmts )
   | DefFN (name, tparams, params, ret_ty, body) ->
       let s_params =
