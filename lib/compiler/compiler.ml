@@ -332,10 +332,24 @@ and codegen_expr = function
                                 (Error
                                    ("Could not find struct definition for '"
                                   ^ clean_name ^ "'")))
-                      | None ->
-                          raise
-                            (Error
-                               "Cannot access property on an anonymous struct"))
+                      | None -> (
+                          try
+                            let idx = int_of_string prop in
+                            let elems = struct_element_types current_ty in
+                            if idx < 0 || idx >= Array.length elems then
+                              raise
+                                (Error ("Tuple index out of bounds: " ^ prop));
+                            let next_val =
+                              build_extractvalue current_val idx "tupleelem"
+                                ce_builder
+                            in
+                            let next_ty = elems.(idx) in
+                            extract next_val next_ty rest
+                          with Failure _ ->
+                            raise
+                              (Error
+                                 ("Cannot access non-integer property '" ^ prop
+                                ^ "' on a tuple"))))
                   | _ ->
                       raise
                         (Error
@@ -1464,44 +1478,60 @@ and codegen_stmt = function
           let rec get_gep ptr ty props =
             match props with
             | [] -> ptr
-            | prop :: rest ->
-                let s_name = Option.get (struct_name ty) in
-                let clean_name =
-                  if String.starts_with ~prefix:"struct." s_name then
-                    String.sub s_name 7 (String.length s_name - 7)
-                  else s_name
-                in
-                let _, field_map = Hashtbl.find struct_registry clean_name in
-                let _, idx, _ =
-                  List.find (fun (n, _, _) -> n = prop) field_map
-                in
-                let next_ptr =
-                  build_struct_gep ty ptr idx "prop_ptr" ce_builder
-                in
-                let next_ty = (struct_element_types ty).(idx) in
-                get_gep next_ptr next_ty rest
+            | prop :: rest -> (
+                match struct_name ty with
+                | Some s_name ->
+                    let clean_name =
+                      if String.starts_with ~prefix:"struct." s_name then
+                        String.sub s_name 7 (String.length s_name - 7)
+                      else s_name
+                    in
+                    let _, field_map =
+                      Hashtbl.find struct_registry clean_name
+                    in
+                    let _, idx, _ =
+                      List.find (fun (n, _, _) -> n = prop) field_map
+                    in
+                    let next_ptr =
+                      build_struct_gep ty ptr idx "prop_ptr" ce_builder
+                    in
+                    let next_ty = (struct_element_types ty).(idx) in
+                    get_gep next_ptr next_ty rest
+                | None ->
+                    let idx = int_of_string prop in
+                    let next_ptr =
+                      build_struct_gep ty ptr idx "tuple_ptr" ce_builder
+                    in
+                    let next_ty = (struct_element_types ty).(idx) in
+                    get_gep next_ptr next_ty rest)
           in
 
           let rec get_ty ty props =
             match props with
             | [] -> ty
-            | prop :: rest ->
-                let s_name = Option.get (struct_name ty) in
-                let clean_name =
-                  if String.starts_with ~prefix:"struct." s_name then
-                    String.sub s_name 7 (String.length s_name - 7)
-                  else s_name
-                in
-                let _, field_map = Hashtbl.find struct_registry clean_name in
-                let _, idx, is_field_mut =
-                  List.find (fun (n, _, _) -> n = prop) field_map
-                in
-                if rest = [] && not is_field_mut then
-                  raise
-                    (Error
-                       ("Cannot assign to immutable field '" ^ prop
-                      ^ "' on struct '" ^ clean_name ^ "'"));
-                get_ty (struct_element_types ty).(idx) rest
+            | prop :: rest -> (
+                match struct_name ty with
+                | Some s_name ->
+                    let clean_name =
+                      if String.starts_with ~prefix:"struct." s_name then
+                        String.sub s_name 7 (String.length s_name - 7)
+                      else s_name
+                    in
+                    let _, field_map =
+                      Hashtbl.find struct_registry clean_name
+                    in
+                    let _, idx, is_field_mut =
+                      List.find (fun (n, _, _) -> n = prop) field_map
+                    in
+                    if rest = [] && not is_field_mut then
+                      raise
+                        (Error
+                           ("Cannot assign to immutable field '" ^ prop
+                          ^ "' on struct '" ^ clean_name ^ "'"));
+                    get_ty (struct_element_types ty).(idx) rest
+                | None ->
+                    let idx = int_of_string prop in
+                    get_ty (struct_element_types ty).(idx) rest)
           in
 
           ( get_gep base_ptr base_struct_llty (List.tl parts),

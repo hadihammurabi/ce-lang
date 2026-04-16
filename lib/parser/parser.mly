@@ -213,7 +213,13 @@ module_path:
 
 path:
   | id = IDENT { id }
-  | id = IDENT DOT p = path { id ^ "." ^ p }
+  | id = IDENT DOT p = path_tail { id ^ "." ^ p }
+
+path_tail:
+  | id = IDENT { id }
+  | i = INT { string_of_int i }
+  | id = IDENT DOT p = path_tail { id ^ "." ^ p }
+  | i = INT DOT p = path_tail { string_of_int i ^ "." ^ p }
 
 generic_params_opt:
   | { [] }

@@ -8,9 +8,7 @@ struct Slice<T any> {
 
 impl Slice<T any> {
   fn get(self, index int) !T {
-    if index >= self.len {
-      raise "unbound index"
-    }
+    assert(self.len > index, "unbound index")
 
     let start *T = self.ptr
     let search *T = self.ptr + (index * mem.sizeOf(*start))
@@ -32,24 +30,6 @@ impl Slice<T any> {
     
     self.len = self.len + 1
     return self
-  }
-
-  fn println(self) void {
-    let val T
-    let mut i int = 0
-    print("{")
-    for {
-      if i >= self.len {
-        break
-      }
-      print(self.get(i) catch (e) T { return val })
-
-      if self.len-1 > i {
-        print(", ")
-      }
-      i = i + 1
-    }
-    println("}")
   }
 }
 

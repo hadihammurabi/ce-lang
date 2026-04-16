@@ -3,3 +3,10 @@ fn or<T any>(value T) fn(string)T {
     return value
   }
 }
+
+fn zero<T any>() fn(string)T {
+  return fn(e string) T {
+    let x T
+    return x
+  }
+}
