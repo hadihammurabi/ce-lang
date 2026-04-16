@@ -256,8 +256,8 @@ expr_simple:
   | e = expr LT targs = separated_list(COMMA, types) GT LBRACE sep_opt fields = struct_init_list RBRACE
     { match e with Let name -> Struct (name, targs, fields) | _ -> raise (Failure "Invalid generic struct instantiation") }
 
-  | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block   
-    { Catch(e, id, ty, body) }
+  | e = expr_simple CATCH LPAREN id = IDENT RPAREN ty = types body = block { Catch(e, id, ty, body) }
+  | e = expr_simple CATCH handler = expr_simple { CatchExpr(e, handler) }
   | LPAREN e = expr COMMA rest = separated_nonempty_list(COMMA, expr) RPAREN { Tuple (e :: rest) }
   | FN LPAREN RPAREN ty = types body = block { AnonFN([], ty, body) }
   | FN LPAREN params = separated_nonempty_list(COMMA, param) RPAREN ty = types body = block { AnonFN(params, ty, body) }

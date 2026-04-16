@@ -118,6 +118,9 @@ and namespace_expr prefix decls = function
           id,
           ty,
           List.map (namespace_stmt prefix decls) stmts )
+  | CatchExpr (e, handler) ->
+      CatchExpr
+        (namespace_expr prefix decls e, namespace_expr prefix decls handler)
   | Struct (name, targs, fields) ->
       let new_name =
         if List.mem name decls then prefix ^ "." ^ name else name

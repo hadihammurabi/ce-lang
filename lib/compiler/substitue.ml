@@ -71,6 +71,8 @@ and substitute_expr type_map = function
           id,
           substitute_type type_map ty,
           List.map (substitute_stmt type_map) stmts )
+  | CatchExpr (e, handler) ->
+      CatchExpr (substitute_expr type_map e, substitute_expr type_map handler)
   | Tuple es -> Tuple (List.map (substitute_expr type_map) es)
   | AnonFN (params, ret_ty, body) ->
       let s_params =

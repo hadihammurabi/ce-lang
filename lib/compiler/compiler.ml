@@ -158,6 +158,7 @@ and infer_ast_type = function
   | Char _ -> TChar
   | Array (n, ty, _) -> TArray (n, ty)
   | Catch (_, _, ty, _) -> ty
+  | CatchExpr (e, _) -> ( match infer_ast_type e with TResult t -> t | t -> t)
   | Struct (name, targs, _) ->
       if targs = [] then TNamed name else TGenericInst (name, targs)
   | Add (l, _) | Sub (l, _) | Mul (l, _) | Div (l, _) | Mod (l, _) ->
@@ -342,12 +343,18 @@ and codegen_expr = function
                           ^ "' on non-struct type")))
             in
             extract base_struct_val base_struct_llty props
-        | None -> raise (Error ("Unknown variable: " ^ base_name))
+        | None -> (
+            match lookup_function name ce_module with
+            | Some f -> f
+            | None -> raise (Error ("Unknown variable or function: " ^ name)))
       else
         match Hashtbl.find_opt named_values name with
         | Some (v, ast_ty, _) ->
             build_load (llvm_type_of ast_ty) v name ce_builder
-        | None -> raise (Error ("Unknown variable: " ^ name)))
+        | None -> (
+            match lookup_function name ce_module with
+            | Some f -> f
+            | None -> raise (Error ("Unknown variable or function: " ^ name))))
   | Ref (Let name) -> (
       try
         let ptr_val, _, _ = Hashtbl.find named_values name in
@@ -945,6 +952,70 @@ and codegen_expr = function
           [ (!catch_val, err_end_bb); (ok_val, ok_end_bb) ]
           "catch_res" ce_builder
       else ok_val
+  | CatchExpr (expr, handler) ->
+      let res_val = codegen_expr expr in
+      let is_err = build_extractvalue res_val 0 "is_err" ce_builder in
+
+      let expected_ast_ty =
+        match infer_ast_type expr with TResult t -> t | t -> t
+      in
+      let expected_ll_ty = llvm_type_of expected_ast_ty in
+
+      let the_func = block_parent (insertion_block ce_builder) in
+      let err_bb = append_block ce_ctx "catch_expr_err" the_func in
+      let ok_bb = append_block ce_ctx "catch_expr_ok" the_func in
+      let merge_bb = append_block ce_ctx "catch_expr_merge" the_func in
+
+      ignore (build_cond_br is_err err_bb ok_bb ce_builder);
+
+      position_at_end err_bb ce_builder;
+      let err_str = build_extractvalue res_val 2 "err_str" ce_builder in
+
+      let handler_val = codegen_expr handler in
+      let handler_ft =
+        match handler with
+        | Let name
+          when Hashtbl.mem function_types name
+               && not (Hashtbl.mem named_values name) ->
+            fst (Hashtbl.find function_types name)
+        | _ -> (
+            let handler_ast_ty = infer_ast_type handler in
+            match handler_ast_ty with
+            | TFn (param_tys, ret_ty) ->
+                function_type (llvm_type_of ret_ty)
+                  (Array.of_list (List.map llvm_type_of param_tys))
+            | _ -> raise (Error "Catch handler must be a function"))
+      in
+
+      let call_name =
+        if expected_ll_ty = void_type ce_ctx then "" else "catch_call_tmp"
+      in
+      let catch_val_raw =
+        build_call handler_ft handler_val [| err_str |] call_name ce_builder
+      in
+
+      let catch_val =
+        if expected_ll_ty = void_type ce_ctx then const_null (void_type ce_ctx)
+        else coerce_value expected_ll_ty catch_val_raw false false
+      in
+
+      let err_end_bb = insertion_block ce_builder in
+      ignore (build_br merge_bb ce_builder);
+
+      position_at_end ok_bb ce_builder;
+      let ok_val =
+        if expected_ll_ty = void_type ce_ctx then const_null (void_type ce_ctx)
+        else build_extractvalue res_val 1 "ok_val" ce_builder
+      in
+      let ok_end_bb = insertion_block ce_builder in
+      ignore (build_br merge_bb ce_builder);
+
+      position_at_end merge_bb ce_builder;
+      if expected_ll_ty = void_type ce_ctx then const_null (void_type ce_ctx)
+      else
+        build_phi
+          [ (catch_val, err_end_bb); (ok_val, ok_end_bb) ]
+          "catch_expr_res" ce_builder
   | Tuple elems ->
       let lltypes = List.map (fun e -> type_of (codegen_expr e)) elems in
       let struct_ty = struct_type ce_ctx (Array.of_list lltypes) in
