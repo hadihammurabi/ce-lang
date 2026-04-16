@@ -1,4 +1,5 @@
 open Llvm
+open Llvm_target
 open Ce_parser.Ast
 open State
 open Utils
@@ -896,10 +897,9 @@ and codegen_expr = function
       let catch_val = ref (const_null catch_ty_ll) in
 
       List.iter
-        (fun s ->
-          match s with
+        (function
           | Return e -> catch_val := codegen_expr e
-          | _ -> ignore (codegen_stmt s))
+          | s -> ignore (codegen_stmt s))
         body;
 
       Hashtbl.remove named_values err_name;
@@ -1787,16 +1787,15 @@ open Llvm
 
 let export binary_name the_module =
   ignore (Llvm_all_backends.initialize ());
-  let target_triple = Llvm_target.Target.default_triple () in
-  let target = Llvm_target.Target.by_triple target_triple in
+  let target_triple = Target.default_triple () in
+  let target = Target.by_triple target_triple in
   let machine =
-    Llvm_target.TargetMachine.create ~triple:target_triple target
-      ~reloc_mode:Llvm_target.RelocMode.PIC
+    TargetMachine.create ~triple:target_triple ~reloc_mode:RelocMode.PIC target
   in
 
   let obj_filename = binary_name ^ ".o" in
-  Llvm_target.TargetMachine.emit_to_file the_module
-    Llvm_target.CodeGenFileType.ObjectFile obj_filename machine;
+  TargetMachine.emit_to_file the_module CodeGenFileType.ObjectFile obj_filename
+    machine;
 
   let link_cmd = Printf.sprintf "cc %s -lgc -o %s" obj_filename binary_name in
   match Sys.command link_cmd with

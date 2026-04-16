@@ -36,24 +36,6 @@ type types =
   | TFn of types list * types
 [@@deriving show]
 
-let rec t = function
-  | TInt | TUInt | TI32 | TU32 -> i32_type ce_ctx
-  | TI8 | TU8 -> i8_type ce_ctx
-  | TI16 | TU16 -> i16_type ce_ctx
-  | TI64 | TU64 -> i64_type ce_ctx
-  | TI128 | TU128 -> integer_type ce_ctx 128
-  | TFloat | TF64 -> double_type ce_ctx
-  | TF32 -> float_type ce_ctx
-  | TBool -> i1_type ce_ctx
-  | TString -> pointer_type ce_ctx
-  | TChar -> i8_type ce_ctx
-  | TPointer _ -> pointer_type ce_ctx
-  | TVoid -> void_type ce_ctx
-  | TArray (n, inner) -> array_type (t inner) n
-  | TTuple ts -> struct_type ce_ctx (Array.of_list (List.map t ts))
-  | TFn _ -> pointer_type ce_ctx
-  | _ -> failwith "Codegen error: TypeUnknown reached LLVM backend"
-
 type expr =
   | Void
   | Nil
