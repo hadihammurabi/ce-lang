@@ -9,7 +9,7 @@ impl string {
     let length uint = self.len()
     let new_ptr *char = malloc<char>(length + 1)
     
-    let mut i uint = 0
+    let mut i uint
     for {
       if i > length {
         break
@@ -25,7 +25,7 @@ impl string {
   fn compare(self, other string) int {
     let null_char char = 0
 
-    let mut i uint = 0
+    let mut i uint
     for {
       let char_a char = *(self + i)
       let char_b char = *(other + i)
@@ -47,4 +47,109 @@ impl string {
     return 0
   }
 
+  fn hasPrefix(self, prefix string) bool {
+    let self_len uint = self.len()
+    let pref_len uint = prefix.len()
+
+    if pref_len > self_len {
+      return false
+    }
+
+    let mut i uint
+    for {
+      if i >= pref_len {
+        break
+      }
+      
+      let char_self char = *(self + i)
+      let char_pref char = *(prefix + i)
+      
+      if char_self == char_pref {
+      } else {
+        return false
+      }
+      
+      i = i + 1
+    }
+    
+    return true
+  }
+
+  fn hasSuffix(self, suffix string) bool {
+    let self_len uint = self.len()
+    let suff_len uint = suffix.len()
+
+    if suff_len > self_len {
+      return false
+    }
+
+    let offset uint = self_len - suff_len
+    let mut i uint
+    
+    for {
+      if i >= suff_len {
+        break
+      }
+      
+      let char_self char = *(self + offset + i)
+      let char_suff char = *(suffix + i)
+      
+      if char_self == char_suff {
+      } else {
+        return false
+      }
+      
+      i = i + 1
+    }
+    
+    return true
+  }
+
+  fn contains(self, substr string) bool {
+    let self_len uint = self.len()
+    let sub_len uint = substr.len()
+
+    if sub_len == 0 {
+      return true
+    }
+    if sub_len > self_len {
+      return false
+    }
+
+    let limit uint = self_len - sub_len
+    let mut i uint
+    
+    for {
+      if i > limit {
+        break
+      }
+      
+      let mut is_match bool = true
+      let mut j uint
+      
+      for {
+        if j >= sub_len {
+          break
+        }
+        
+        let char_self char = *(self + i + j)
+        let char_sub char = *(substr + j)
+        
+        if char_self == char_sub {
+        } else {
+          is_match = false
+          break
+        }
+        j = j + 1
+      }
+
+      if is_match {
+        return true
+      }
+
+      i = i + 1
+    }
+    
+    return false
+  }
 }

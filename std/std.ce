@@ -1,9 +1,13 @@
 trait any{}
 
-fn assert(condition bool) !void {
+fn assert(condition bool, message string) !void {
   if condition {
   } else {
-    raise "Assertion failed!"
+    if message == "" {
+      raise "Assertion failed!"
+    } else {
+      raise message
+    }
   }
 }
 
