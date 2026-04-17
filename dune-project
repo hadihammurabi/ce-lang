@@ -30,6 +30,8 @@
   cmdliner
   fmt
   llvm
+  linol
+  linol-lwt
   (alcotest :with-test)
   (bisect_ppx :with-test)))
 

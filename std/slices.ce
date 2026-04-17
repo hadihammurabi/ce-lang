@@ -33,7 +33,7 @@ impl Slice<T any> {
   }
 }
 
-fn new<t any>(cap int) Slice<t> {
-  let s Slice<t> = Slice<t>{ptr = malloc<t>(cap); len = cap; cap = cap}
+fn new<T any>(cap int) Slice<T> {
+  let s Slice<T> = Slice<T>{ptr = malloc<T>(cap); len = cap; cap = cap}
   return s
 }
