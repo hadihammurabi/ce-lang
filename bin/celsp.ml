@@ -155,21 +155,91 @@ let get_dynamic_completions src =
     (fun label kind acc -> CompletionItem.create ~label ~kind () :: acc)
     symbols []
 
+let definitions : (string * string, Linol_lsp.Lsp.Types.Location.t) Hashtbl.t =
+  Hashtbl.create 50
+
+let get_word_at_pos content line col =
+  let lines = String.split_on_char '\n' content in
+  if line < 0 || line >= List.length lines then ""
+  else
+    let target_line = List.nth lines line in
+    if col < 0 || col > String.length target_line then ""
+    else
+      let is_ident_char c =
+        match c with
+        | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+        | _ -> false
+      in
+      let rec find_start i =
+        if i > 0 && is_ident_char target_line.[i - 1] then find_start (i - 1)
+        else i
+      in
+      let rec find_end i =
+        if i < String.length target_line && is_ident_char target_line.[i] then
+          find_end (i + 1)
+        else i
+      in
+      let start_idx = find_start col in
+      let end_idx = find_end col in
+      if start_idx < end_idx then
+        String.sub target_line start_idx (end_idx - start_idx)
+      else ""
+
+let index_document uri src =
+  let lexbuf = Lexing.from_string src in
+  let uri_str = DocumentUri.to_string uri in
+
+  let rec loop () =
+    try
+      let token = Ce_lexer.Lexer.tokenize lexbuf in
+      match token with
+      | Ce_parser.Parser.EOF -> ()
+      | Ce_parser.Parser.LET | Ce_parser.Parser.FN | Ce_parser.Parser.STRUCT
+      | Ce_parser.Parser.TRAIT ->
+          let next_tok = Ce_lexer.Lexer.tokenize lexbuf in
+          let target_tok =
+            if token = Ce_parser.Parser.LET && next_tok = Ce_parser.Parser.MUT
+            then Ce_lexer.Lexer.tokenize lexbuf
+            else next_tok
+          in
+
+          (match target_tok with
+          | Ce_parser.Parser.IDENT name ->
+              let pos = lexbuf.lex_curr_p in
+              let line = pos.pos_lnum - 1 in
+              let col = pos.pos_cnum - pos.pos_bol in
+              let start_pos =
+                Position.create ~line ~character:(col - String.length name)
+              in
+              let end_pos = Position.create ~line ~character:col in
+              let range = Range.create ~start:start_pos ~end_:end_pos in
+              let loc = Location.create ~uri ~range in
+
+              Hashtbl.replace definitions (uri_str, name) loc
+          | _ -> ());
+          loop ()
+      | _ -> loop ()
+    with _ -> ()
+  in
+  loop ()
+
 class ce_lsp_server =
   object (self)
     inherit Jsonrpc2.server as super
     val documents : (string, string) Hashtbl.t = Hashtbl.create 10
-    method spawn_query_handler f = Lwt.async f
+    method! config_hover = Some (`Bool true)
+    method! config_definition = Some (`Bool true)
 
     method! config_completion =
       Some
         (Linol_lsp.Lsp.Types.CompletionOptions.create ~resolveProvider:false ())
 
-    method! config_hover = Some (`Bool true)
+    method spawn_query_handler f = Lwt.async f
 
     method on_notif_doc_did_open ~notify_back d ~content =
       log "on_notif_doc_did_open: checking syntax...";
       Hashtbl.replace documents (DocumentUri.to_string d.uri) content;
+      index_document d.uri content;
       publish_diags notify_back d.uri content
 
     method on_notif_doc_did_close ~notify_back:_ uri =
@@ -180,6 +250,7 @@ class ce_lsp_server =
         =
       log "on_notif_doc_did_change: file changed, running parser...";
       Hashtbl.replace documents (DocumentUri.to_string d.uri) new_content;
+      index_document d.uri new_content;
       publish_diags notify_back d.uri new_content
 
     method! on_req_completion ~notify_back:_ ~id:_ ~uri ~pos:_ ~ctx:_
@@ -278,6 +349,23 @@ class ce_lsp_server =
               in
               let hover_response = Hover.create ~contents () in
               Lwt.return_some hover_response)
+
+    method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
+        ~partialResultToken:_ _doc_state =
+      log "Go to definition requested!";
+      let uri_str = DocumentUri.to_string uri in
+
+      match Hashtbl.find_opt documents uri_str with
+      | None -> Lwt.return_none
+      | Some content -> (
+          let word = get_word_at_pos content pos.line pos.character in
+          log ("Looking for definition of: " ^ word);
+
+          if word = "" then Lwt.return_none
+          else
+            match Hashtbl.find_opt definitions (uri_str, word) with
+            | Some loc -> Lwt.return_some (`Location [ loc ])
+            | None -> Lwt.return_none)
   end
 
 let execute () =
