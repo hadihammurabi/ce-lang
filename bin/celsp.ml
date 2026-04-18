@@ -3,6 +3,8 @@ open Lsp.Types
 open Linol_lwt
 
 let log msg = Printf.eprintf "[ce-lsp] %s\n%!" msg
+let documents : (string, string) Hashtbl.t = Hashtbl.create 10
+let signatures : (string * string, string) Hashtbl.t = Hashtbl.create 50
 
 let check_syntax src =
   let lexbuf = Lexing.from_string src in
@@ -97,15 +99,15 @@ let get_hover_docs word =
          fn typeof(val any) string\n\
          ```\n\
          Returns the name of the type of the given value."
-  | "int" | "string" | "bool" | "float" | "char" | "void" | "uint" | "u8" | "i8"
-  | "i32" | "i64" | "f32" | "f64" ->
-      Some ("**" ^ word ^ "**\n\nBuilt-in primitive type.")
   | "fn" -> Some "**fn**\n\nDeclares a new function."
   | "let" -> Some "**let**\n\nDeclares a variable."
   | "mut" -> Some "**mut**\n\nMarks a variable or struct field as mutable."
   | "struct" -> Some "**struct**\n\nDeclares a custom data structure."
   | "trait" -> Some "**trait**\n\nDeclares an interface/trait."
   | "impl" -> Some "**impl**\n\nImplements methods for a struct or trait."
+  | "int" | "string" | "bool" | "float" | "char" | "void" | "uint" | "u8" | "i8"
+  | "i32" | "i64" | "f32" | "f64" ->
+      Some ("```ce\n" ^ word ^ "\n```\n\nBuilt-in primitive type.")
   | _ -> None
 
 let get_dynamic_completions src =
@@ -215,7 +217,12 @@ let index_document uri src =
               let range = Range.create ~start:start_pos ~end_:end_pos in
               let loc = Location.create ~uri ~range in
 
-              Hashtbl.replace definitions (uri_str, name) loc
+              Hashtbl.replace definitions (uri_str, name) loc;
+
+              let lines = String.split_on_char '\n' src in
+              if line >= 0 && line < List.length lines then
+                let sig_text = String.trim (List.nth lines line) in
+                Hashtbl.replace signatures (uri_str, name) sig_text
           | _ -> ());
           loop ()
       | _ -> loop ()
@@ -326,14 +333,51 @@ let get_inlay_hints src =
   loop ();
   !hints
 
+let get_code_lenses src =
+  let lexbuf = Lexing.from_string src in
+  let lenses = ref [] in
+
+  let rec loop () =
+    try
+      let token = Ce_lexer.Lexer.tokenize lexbuf in
+      match token with
+      | Ce_parser.Parser.EOF -> ()
+      | Ce_parser.Parser.FN ->
+          (match Ce_lexer.Lexer.tokenize lexbuf with
+          | Ce_parser.Parser.IDENT "main" ->
+              (* We found the main function! *)
+              let pos = lexbuf.lex_curr_p in
+              let line = pos.pos_lnum - 1 in
+              let range =
+                Range.create
+                  ~start:(Position.create ~line ~character:0)
+                  ~end_:(Position.create ~line ~character:7)
+              in
+
+              (* Create the floating button text *)
+              let command =
+                Command.create ~title:"▶ Run Program" ~command:"" ()
+              in
+              let lens = CodeLens.create ~range ~command () in
+              lenses := lens :: !lenses
+          | _ -> ());
+          loop ()
+      | _ -> loop ()
+    with _ -> ()
+  in
+  loop ();
+  !lenses
+
 class ce_lsp_server =
   object (self)
     inherit Jsonrpc2.server as super
-    val documents : (string, string) Hashtbl.t = Hashtbl.create 10
     method! config_hover = Some (`Bool true)
     method! config_definition = Some (`Bool true)
     method! config_symbol = Some (`Bool true)
     method! config_inlay_hints = Some (`Bool true)
+
+    method! config_code_lens_options =
+      Some (CodeLensOptions.create ~resolveProvider:false ())
 
     method! config_completion =
       Some
@@ -434,26 +478,23 @@ class ce_lsp_server =
 
     method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         _doc_state =
-      log "Hover requested!";
       let uri_str = DocumentUri.to_string uri in
       match Hashtbl.find_opt documents uri_str with
       | None -> Lwt.return_none
       | Some content -> (
-          let line = pos.line in
-          let col = pos.character in
-          let word = get_word_at_pos content line col in
-          log @@ Printf.sprintf "search: %d %d %s" line col word;
-
-          match get_hover_docs word with
-          | None -> Lwt.return_none
-          | Some markdown_text ->
-              let contents =
-                `MarkupContent
-                  (MarkupContent.create ~kind:MarkupKind.Markdown
-                     ~value:markdown_text)
-              in
-              let hover_response = Hover.create ~contents () in
-              Lwt.return_some hover_response)
+          let word = get_word_at_pos content pos.line pos.character in
+          if word = "" then Lwt.return_none
+          else
+            match get_hover_docs word with
+            | None -> Lwt.return_none
+            | Some markdown_text ->
+                let contents =
+                  `MarkupContent
+                    (MarkupContent.create ~kind:MarkupKind.Markdown
+                       ~value:markdown_text)
+                in
+                let hover_response = Hover.create ~contents () in
+                Lwt.return_some hover_response)
 
     method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         ~partialResultToken:_ _doc_state =
@@ -492,6 +533,13 @@ class ce_lsp_server =
       | Some content ->
           let hints = get_inlay_hints content in
           Lwt.return_some hints
+
+    method! on_req_code_lens ~notify_back:_ ~id:_ ~uri ~workDoneToken:_
+        ~partialResultToken:_ state =
+      let uri_str = DocumentUri.to_string uri in
+      match Hashtbl.find_opt documents uri_str with
+      | None -> Lwt.return []
+      | Some content -> Lwt.return (get_code_lenses content)
   end
 
 let execute () =
