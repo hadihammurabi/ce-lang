@@ -12,7 +12,11 @@ let execute file =
       exit 1
   in
 
-  "./" ^ binary_name |> Sys.command |> fun code -> if code <> 0 then exit code
+  let binary_name =
+    if not (String.contains binary_name '/') then "./" ^ binary_name
+    else binary_name
+  in
+  binary_name |> Sys.command |> fun code -> if code <> 0 then exit code
 
 let command =
   let doc = "Compile inserted ce-lang code file then execute that" in

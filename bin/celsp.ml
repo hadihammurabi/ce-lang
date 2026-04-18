@@ -333,9 +333,10 @@ let get_inlay_hints src =
   loop ();
   !hints
 
-let get_code_lenses src =
+let get_code_lenses uri src =
   let lexbuf = Lexing.from_string src in
   let lenses = ref [] in
+  let uri_str = DocumentUri.to_string uri in
 
   let rec loop () =
     try
@@ -345,7 +346,6 @@ let get_code_lenses src =
       | Ce_parser.Parser.FN ->
           (match Ce_lexer.Lexer.tokenize lexbuf with
           | Ce_parser.Parser.IDENT "main" ->
-              (* We found the main function! *)
               let pos = lexbuf.lex_curr_p in
               let line = pos.pos_lnum - 1 in
               let range =
@@ -354,9 +354,10 @@ let get_code_lenses src =
                   ~end_:(Position.create ~line ~character:7)
               in
 
-              (* Create the floating button text *)
               let command =
-                Command.create ~title:"▶ Run Program" ~command:"" ()
+                Command.create ~title:"▶ Run Program" ~command:"ce.run"
+                  ~arguments:[ `String uri_str ]
+                  ()
               in
               let lens = CodeLens.create ~range ~command () in
               lenses := lens :: !lenses
@@ -401,6 +402,10 @@ class ce_lsp_server =
       Hashtbl.replace documents (DocumentUri.to_string d.uri) new_content;
       index_document d.uri new_content;
       publish_diags notify_back d.uri new_content
+
+    method! on_req_execute_command ~notify_back ~id:_ ~workDoneToken:_ _command
+        _args =
+      Lwt.return `Null
 
     method! on_req_completion ~notify_back:_ ~id:_ ~uri ~pos:_ ~ctx:_
         ~workDoneToken:_ ~partialResultToken:_ _doc_state =
@@ -539,7 +544,7 @@ class ce_lsp_server =
       let uri_str = DocumentUri.to_string uri in
       match Hashtbl.find_opt documents uri_str with
       | None -> Lwt.return []
-      | Some content -> Lwt.return (get_code_lenses content)
+      | Some content -> Lwt.return (get_code_lenses uri content)
   end
 
 let execute () =
