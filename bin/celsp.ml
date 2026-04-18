@@ -108,6 +108,53 @@ let get_hover_docs word =
   | "impl" -> Some "**impl**\n\nImplements methods for a struct or trait."
   | _ -> None
 
+let get_dynamic_completions src =
+  let lexbuf = Lexing.from_string src in
+  let symbols = Hashtbl.create 50 in
+
+  let rec loop () =
+    try
+      match Ce_lexer.Lexer.tokenize lexbuf with
+      | Ce_parser.Parser.EOF -> ()
+      | Ce_parser.Parser.LET ->
+          (match Ce_lexer.Lexer.tokenize lexbuf with
+          | Ce_parser.Parser.MUT -> (
+              match Ce_lexer.Lexer.tokenize lexbuf with
+              | Ce_parser.Parser.IDENT name ->
+                  Hashtbl.replace symbols name CompletionItemKind.Variable
+              | _ -> ())
+          | Ce_parser.Parser.IDENT name ->
+              Hashtbl.replace symbols name CompletionItemKind.Variable
+          | _ -> ());
+          loop ()
+      | Ce_parser.Parser.FN ->
+          (match Ce_lexer.Lexer.tokenize lexbuf with
+          | Ce_parser.Parser.IDENT name ->
+              Hashtbl.replace symbols name CompletionItemKind.Function
+          | _ -> ());
+          loop ()
+      | Ce_parser.Parser.STRUCT ->
+          (match Ce_lexer.Lexer.tokenize lexbuf with
+          | Ce_parser.Parser.IDENT name ->
+              Hashtbl.replace symbols name CompletionItemKind.Struct
+          | _ -> ());
+          loop ()
+      | Ce_parser.Parser.TRAIT ->
+          (match Ce_lexer.Lexer.tokenize lexbuf with
+          | Ce_parser.Parser.IDENT name ->
+              Hashtbl.replace symbols name CompletionItemKind.Interface
+          | _ -> ());
+          loop ()
+      | _ -> loop ()
+    with _ -> ()
+  in
+
+  loop ();
+
+  Hashtbl.fold
+    (fun label kind acc -> CompletionItem.create ~label ~kind () :: acc)
+    symbols []
+
 class ce_lsp_server =
   object (self)
     inherit Jsonrpc2.server as super
@@ -135,9 +182,13 @@ class ce_lsp_server =
       Hashtbl.replace documents (DocumentUri.to_string d.uri) new_content;
       publish_diags notify_back d.uri new_content
 
-    method! on_req_completion ~notify_back:_ ~id:_ ~uri:_ ~pos:_ ~ctx:_
+    method! on_req_completion ~notify_back:_ ~id:_ ~uri ~pos:_ ~ctx:_
         ~workDoneToken:_ ~partialResultToken:_ _doc_state =
       log "Autocomplete requested!";
+      let uri_str = DocumentUri.to_string uri in
+      let content =
+        match Hashtbl.find_opt documents uri_str with Some c -> c | None -> ""
+      in
 
       let create_keyword label =
         CompletionItem.create ~label ~kind:CompletionItemKind.Keyword ()
@@ -201,7 +252,8 @@ class ce_lsp_server =
           ~insertTextFormat:InsertTextFormat.Snippet
           ~detail:"Define a new function" ()
       in
-      let items = fn_snippet :: (keywords @ types) in
+      let dynamic_items = get_dynamic_completions content in
+      let items = fn_snippet :: (keywords @ types @ dynamic_items) in
       Lwt.return_some (`List items)
 
     method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
