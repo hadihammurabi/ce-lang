@@ -274,6 +274,58 @@ let get_document_symbols src =
   loop ();
   List.rev !symbols
 
+let get_inlay_hints src =
+  let lexbuf = Lexing.from_string src in
+  let hints : Linol_lsp.Types.InlayHint.t list ref = ref [] in
+
+  let rec loop () =
+    try
+      let token = Ce_lexer.Lexer.tokenize lexbuf in
+      match token with
+      | Ce_parser.Parser.EOF -> ()
+      | Ce_parser.Parser.LET ->
+          let next_tok = Ce_lexer.Lexer.tokenize lexbuf in
+          let is_mut, name_tok =
+            if next_tok = Ce_parser.Parser.MUT then
+              (true, Ce_lexer.Lexer.tokenize lexbuf)
+            else (false, next_tok)
+          in
+
+          (match name_tok with
+          | Ce_parser.Parser.IDENT name ->
+              let after_name = Ce_lexer.Lexer.tokenize lexbuf in
+              if after_name = Ce_parser.Parser.EQUALS then begin
+                let pos = lexbuf.lex_curr_p in
+                let line = pos.pos_lnum - 1 in
+                let col = pos.pos_cnum - pos.pos_bol - 1 in
+                let val_tok = Ce_lexer.Lexer.tokenize lexbuf in
+                let inferred_type =
+                  match val_tok with
+                  | Ce_parser.Parser.INT _ -> "int"
+                  | Ce_parser.Parser.FLOAT _ -> "float"
+                  | Ce_parser.Parser.STRING _ -> "string"
+                  | Ce_parser.Parser.TRUE | Ce_parser.Parser.FALSE -> "bool"
+                  | Ce_parser.Parser.CHAR _ -> "char"
+                  | _ -> "any"
+                in
+
+                let hint_pos = Position.create ~line ~character:col in
+                let hint =
+                  InlayHint.create ~position:hint_pos
+                    ~label:(`String (": " ^ inferred_type))
+                    ~kind:InlayHintKind.Type ~paddingLeft:false
+                    ~paddingRight:true ()
+                in
+                hints := hint :: !hints
+              end
+          | _ -> ());
+          loop ()
+      | _ -> loop ()
+    with _ -> ()
+  in
+  loop ();
+  !hints
+
 class ce_lsp_server =
   object (self)
     inherit Jsonrpc2.server as super
@@ -281,6 +333,7 @@ class ce_lsp_server =
     method! config_hover = Some (`Bool true)
     method! config_definition = Some (`Bool true)
     method! config_symbol = Some (`Bool true)
+    method! config_inlay_hints = Some (`Bool true)
 
     method! config_completion =
       Some
@@ -429,6 +482,16 @@ class ce_lsp_server =
       | Some content ->
           let symbols = get_document_symbols content in
           Lwt.return_some (`DocumentSymbol symbols)
+
+    method! on_req_inlay_hint ~notify_back:_ ~id:_ ~uri ~range:_ () =
+      log "Inlay hints requested!";
+      let uri_str = DocumentUri.to_string uri in
+
+      match Hashtbl.find_opt documents uri_str with
+      | None -> Lwt.return_none
+      | Some content ->
+          let hints = get_inlay_hints content in
+          Lwt.return_some hints
   end
 
 let execute () =
