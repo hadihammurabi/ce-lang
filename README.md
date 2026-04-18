@@ -1,3 +1,9 @@
+# ⚠️ [ARCHIVED]
+# ⚠️ MOVED TO
+# ⚠️ https://github.com/ce-programming-language/ce
+
+---
+
 # CE-Lang - A Good Programming Language
 
 A modern compiled systems programming language.
