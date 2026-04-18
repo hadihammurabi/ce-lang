@@ -223,12 +223,64 @@ let index_document uri src =
   in
   loop ()
 
+let get_document_symbols src =
+  let lexbuf = Lexing.from_string src in
+  let symbols = ref [] in
+
+  let rec loop () =
+    try
+      let token = Ce_lexer.Lexer.tokenize lexbuf in
+      match token with
+      | Ce_parser.Parser.EOF -> ()
+      | Ce_parser.Parser.LET | Ce_parser.Parser.FN | Ce_parser.Parser.STRUCT
+      | Ce_parser.Parser.TRAIT ->
+          let kind =
+            match token with
+            | Ce_parser.Parser.LET -> SymbolKind.Variable
+            | Ce_parser.Parser.FN -> SymbolKind.Function
+            | Ce_parser.Parser.STRUCT -> SymbolKind.Struct
+            | Ce_parser.Parser.TRAIT -> SymbolKind.Interface
+            | _ -> SymbolKind.Variable
+          in
+
+          let next_tok = Ce_lexer.Lexer.tokenize lexbuf in
+          let target_tok =
+            if token = Ce_parser.Parser.LET && next_tok = Ce_parser.Parser.MUT
+            then Ce_lexer.Lexer.tokenize lexbuf
+            else next_tok
+          in
+
+          (match target_tok with
+          | Ce_parser.Parser.IDENT name ->
+              let pos = lexbuf.lex_curr_p in
+              let line = pos.pos_lnum - 1 in
+              let col = pos.pos_cnum - pos.pos_bol in
+              let start_pos =
+                Position.create ~line ~character:(col - String.length name)
+              in
+              let end_pos = Position.create ~line ~character:col in
+              let range = Range.create ~start:start_pos ~end_:end_pos in
+
+              let symbol =
+                DocumentSymbol.create ~name ~kind ~range ~selectionRange:range
+                  ()
+              in
+              symbols := symbol :: !symbols
+          | _ -> ());
+          loop ()
+      | _ -> loop ()
+    with _ -> ()
+  in
+  loop ();
+  List.rev !symbols
+
 class ce_lsp_server =
   object (self)
     inherit Jsonrpc2.server as super
     val documents : (string, string) Hashtbl.t = Hashtbl.create 10
     method! config_hover = Some (`Bool true)
     method! config_definition = Some (`Bool true)
+    method! config_symbol = Some (`Bool true)
 
     method! config_completion =
       Some
@@ -366,6 +418,17 @@ class ce_lsp_server =
             match Hashtbl.find_opt definitions (uri_str, word) with
             | Some loc -> Lwt.return_some (`Location [ loc ])
             | None -> Lwt.return_none)
+
+    method on_req_symbol ~notify_back:_ ~id:_ ~uri ~workDoneToken:_
+        ~partialResultToken:_ _doc_state =
+      log "Document Symbols (Outline) requested!";
+      let uri_str = DocumentUri.to_string uri in
+
+      match Hashtbl.find_opt documents uri_str with
+      | None -> Lwt.return_none
+      | Some content ->
+          let symbols = get_document_symbols content in
+          Lwt.return_some (`DocumentSymbol symbols)
   end
 
 let execute () =
